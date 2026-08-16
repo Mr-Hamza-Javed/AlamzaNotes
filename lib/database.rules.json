@@ -1,0 +1,22 @@
+{
+  "rules": {
+    "workspaces": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+
+        "idx": {
+          "$pageId": {
+            ".validate": "newData.hasChild('u')"
+          }
+        },
+
+        "dbrev": {
+          "$dbId": {
+            ".validate": "newData.hasChild('u')"
+          }
+        }
+      }
+    }
+  }
+}
