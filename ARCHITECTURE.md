@@ -59,7 +59,7 @@ Grep this instead of the codebase.
 
 **`lib/part-data.js`** — `page`, `resolvePageId`, `dbFor`, `activeBlocks`, `bodyReady`, `ensureBody`, `ensureBodies`, `needParent`, `digestMap`, `digestFor`, `rowsReady`, `ensureRows`, `dbIdsIn`, `ensureRowsFor`, `myRole`, `canEdit`, `canComment`, `isReadOnly`, `patchPage`, `setBlocks`, `locate`, `miniRow`, `mutate`, `_mutate`
 
-**`lib/part-editor.js`** — `nearView`, `syncDom`, `blockHtml`, `elRef`, `mathRef`, `gutRef`, `paintGutter`, `afterEdit`, `highlightNow`, `codeEdit`, `setCodeText`, `readBlock`, `onInput`, `caretRect`, `clearTrigger`, `insertMention`, `tryShortcut`, `insertAfter`, `removeBlock`, `onKey`, `wrapSel`, `onPaste`, `onFocus`, `onBlur`
+**`lib/part-editor.js`** — `nearView`, `syncDom`, `blockHtml`, `elRef`, `mathRef`, `gutRef`, `paintGutter`, `afterEdit`, `highlightNow`, `codeEdit`, `setCodeText`, `readBlock`, `editText`, `onInput`, `caretRect`, `clearTrigger`, `insertMention`, `tryShortcut`, `insertAfter`, `removeBlock`, `onKey`, `wrapSel`, `onPaste`, `onFocus`, `onBlur`
 
 **`lib/part-pages.js`** — `flat`, `openPage`, `mobileBack`, `goHome`, `newPage`, `versionById`, `normSnap`, `vsnap`, `vblocks`, `ensureVersion`, `syncVersionMeta`, `ensureVersionMeta`, `primeLatestVersion`, `cacheVersion`, `subtreeIds`, `descendants`, `trashPage`, `restorePage`
 
@@ -95,7 +95,7 @@ Grep this instead of the codebase.
 
 ```
 lib/store.js         one API, two adapters (Firebase RTDB / local)
-lib/markdown.js      markdown <-> blocks
+lib/markdown.js      markdown <-> blocks, and the marker map the caret needs
 lib/diff.js          block + word level diff
 lib/seed.js          demo workspace
 lib/firebase-config.js

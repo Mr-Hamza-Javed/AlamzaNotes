@@ -59,8 +59,8 @@ Share     { published, slug, password|null, invites[{email,role}], role: viewer|
 Block types: `p, h1, h2, h3, ul, ol, todo, toggle, quote, callout, divider,
 code, math, table, columns, subpage, database`.
 
-Blocks also carry optional `color`, `bg`, `comments[]`, `rows[][]` (table) and
-`cols[][]` (columns).
+Blocks also carry optional `color`, `bg`, `comments[]`, `rows[][]` (table),
+`cols[][]` (columns) and `level` (toggle: 1–3 for a heading toggle).
 
 ## 4. Pages & nesting
 
@@ -88,12 +88,14 @@ Notion-class block editor.
 
 - **Slash menu** (`/`) — filterable list of every block type, keyboard navigable.
 - **Markdown input shortcuts** while typing: `# `, `## `, `### `, `- `, `1. `,
-  `[] `, `> `, ` ``` `, `---`, `$$`.
+  `[] `, `> `, ` ``` `, `---`, `$$`. Inside a toggle the hashes set the
+  toggle's heading level instead (§5, Heading toggles).
 - **Drag handle** (`⠿`) on hover — drag to reorder blocks.
 - **Block hover menu** — Turn into, Duplicate, Copy link, Move to, Delete.
 - **Inline marks**: `**bold**`, `*italic*`, `` `code` ``, `~~strike~~`,
   `==highlight==`, `[label](url)`.
 - Keyboard: Enter = new block, Backspace at start = merge/downgrade,
+  Backspace inside text = one *visible* character (§5.1),
   Tab / Shift+Tab = indent, Cmd/Ctrl+B/I/E, Cmd/Ctrl+Enter = toggle todo.
 - Code blocks: language selector + highlight.js.
   A code block is a **literal container**. Whatever goes in comes back out
@@ -141,6 +143,25 @@ Notion-class block editor.
   `locate()` returns the containing `parent` block alongside the hit, because a
   block nested in a toggle cannot climb out without knowing what it is inside.
 
+  **Heading toggles.** A toggle can title a section at heading 1, 2 or 3 — the
+  same typography, gutter offset and reader styling as the plain heading of
+  that level, with the collapse arrow scaled to match. It is a `toggle`
+  carrying a `level`, **not** a fourth block type: `repair()`, the three ⏎
+  exits, Tab-to-nest, `flat()`, drag and the markdown writer all key off
+  `type === 'toggle'` and go on working untouched. The menus need names for
+  the three, so they use the pseudo-types `toggle1`/`toggle2`/`toggle3`, which
+  `blockSpec()` unpacks at the single place a block's type is written.
+  `setBlockType()` is that place, and it *deletes* the level for anything that
+  is not a heading toggle — otherwise a toggle turned into a paragraph and
+  back would silently return as a heading.
+
+  Inside a toggle, `# `/`## `/`### ` set the **toggle's own** level rather than
+  converting the block. Falling through to the plain heading shortcut would
+  drop the toggle's children on the floor, since a toggle is the one block
+  whose contents live inside it. Any of the three levels can be swapped for
+  any other at any time, and past three hashes there is no heading to mean, so
+  nothing happens and the text stays exactly as typed.
+
 ### 5.1 Live-preview inline markdown (critical)
 
 The editable DOM **always holds the exact markdown source**. Marker characters
@@ -155,6 +176,24 @@ The editable DOM **always holds the exact markdown source**. Marker characters
 
 Because markers live in the DOM as real text, `textContent` round-trips to
 lossless markdown. This is what guarantees §5.2.
+
+**Backspace has to know the markers are there.** The character in front of the
+caret is not always the character the reader sees: at the end of `**bold**` two
+invisible asterisks sit between them, so a plain ⌫ ate a delimiter and the
+whole run lost its formatting in one keystroke — press it once at the end of a
+bold word and `bold` became a raw `**bold*`. ⌫ therefore deletes the last
+**visible** character instead, and when that empties the run it takes the
+delimiters with it, so the text falls back to plain rather than leaving `****`
+behind. The same map answers the mirror case: when only delimiters lie between
+the caret and column 0, the caret visually *is* at the start, so the
+block-level ⌫ (merge into the block above / downgrade to a paragraph) runs
+there rather than eating the opening marker.
+
+`AMD.markMap(text)` says which character positions are hidden delimiters and
+`AMD.backspaceAt(text, at)` applies the rule; both read the same `scan()` the
+renderer uses, so what counts as a marker can never drift from what is drawn.
+In **source view** the delimiters are visible — they are the reader's to
+delete, and this behaviour deliberately stands aside.
 
 ### 5.2 Copy = Markdown
 
@@ -776,6 +815,7 @@ sections above, which are always current.
 
 | Date | Change |
 | --- | --- |
+| 2026-08-17 | **Heading toggles, and a ⌫ that can see the hidden markers.** (1) **Toggles came in one size.** A toggle can now title a section at heading 1, 2 or 3, matching the plain heading of that level in type, gutter offset and reader styling, with the arrow scaled to suit. It is a `toggle` with a `level`, not a fourth block type — `repair()`, the three ⏎ exits, Tab-to-nest, `flat()`, drag and the markdown writer all key off `type === 'toggle'` and needed no change; the menus name the levels through the pseudo-types `toggle1`…`toggle3`, unpacked by `blockSpec()` at `setBlockType()`, the one place a type is written (and the one place that *clears* a stale level, or a toggle turned into a paragraph and back would return as a heading). Inside a toggle the markdown hashes now set the toggle's own level instead of converting the block — the old path made a plain heading and left the toggle's children unreachable — and any level swaps to any other, while four or more hashes mean no heading and so do nothing at all. (2) **⌫ at the end of any inline run destroyed its formatting.** §5.1 keeps the markdown source in the DOM with the delimiters hidden, so at the end of `**bold**` the caret sits behind two invisible asterisks: one keystroke ate a delimiter and `bold` came back as a raw `**bold*`. ⌫ now deletes the last *visible* character, and when the run runs out of them it drops the delimiters too, so the text falls back to plain instead of leaving `****`. The mirror case is the same map: when only delimiters separate the caret from column 0, the caret visually *is* at the start, so the block-level ⌫ runs there rather than eating the opening marker. `markMap()`/`backspaceAt()` read the same `scan()` the renderer does — one pass, two consumers — so what counts as a marker can never drift from what is drawn, and source view (where the delimiters are visible) is deliberately left alone. Verified: `inline()` byte-identical to its predecessor across 31 inputs with the source round-tripping; 20 `backspaceAt` cases; and in the browser, all six inline marks deleting down to clean plain text, the three levels swapping in both directions, four hashes inert, collapse/⏎-into-child/markdown-export/source-view/⌘Z all intact, zero console errors. |
 | 2026-08-16 | **Demo banner's exit button was a 26px tap target on phones** — below the project's own 44px floor, and it is the *only* way back from a state the banner exists precisely because users would read it as data loss. The message and a 44px button cannot share one 41px row, so on mobile the bar stacks: message on top, full-width 44px button beneath (89px tall). Desktop keeps the single 41px row. Verified at a true 375px width: button 44×351 fully inside the bar, nothing overflowing. |
 | 2026-08-16 | **Demo mode is now announced, not silent.** Booting the demo replaces the whole workspace with seeded pages; with nothing on screen saying so, that is indistinguishable from having lost every note. A slim bar at the top of the app now states it and offers "Back to my notes" (`AStore.leaveDemo()`), instead of leaving the exit buried in settings. Added `--warn-bg` / `--warn-fg` / `--warn-bd` in both themes, following the existing `--add-*` / `--del-*` convention rather than overloading another token. Verified in both themes; the banner is absent in normal Firebase mode. |
 | 2026-08-16 | **Two editor traps fixed.** (1) **A toggle had no keyboard exit.** ⏎ on its title focused `children[0]`, so a toggle with nothing inside consumed the key and did nothing at all, and once inside ⏎ only ever made more children — no keystroke climbed out. Added three exits: ⏎ on a blank toggle turns it back into a paragraph; ⏎ on a titled toggle opens/creates its first child and puts the caret there; ⏎ on an empty last child climbs out to just after the toggle. "Blank" had to mean *nothing written inside* rather than *no children*, since `repair()` keeps one blank child on every toggle and a length test would have made that exit dead code. `locate()` now returns the containing `parent`, which is what makes climbing out possible. (2) **The slash menu never scrolled to its selection.** The popup is 320px over ~890px of items, and moving the highlight never moved the scroll — so past the sixth item the selection walked out of sight and the arrow keys looked broken. It read worst on the wrap from last back to first, which looked like the selection sticking at the bottom: it *had* returned to the top, 570px above the visible rows. Fixed by adjusting `scrollTop` by the smallest amount that brings the row in (not `scrollIntoView`, which would drag the editor behind it); the first row scrolls fully to top so the section title is not clipped. Also clamped the selection index against the *current* result count — typing narrowed the list under a stale index, leaving nothing highlighted while ⏎ still inserted the clamped last item, so the menu disagreed with itself about what was selected. Verified: all 18 rows stay visible walking down and up, both wraps land correctly, stale index 15 over 1 result highlights row 0 and ⏎ inserts exactly that; all three toggle exits confirmed; zero console errors. |

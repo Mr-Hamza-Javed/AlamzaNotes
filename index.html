@@ -646,11 +646,12 @@ button:active{transform:scale(.985);opacity:.85}
                   </div>
                 </sc-if>
                 <sc-if value="{{ r.isToggle }}" hint-placeholder-val="{{ false }}">
-                  <div style="display:flex;align-items:flex-start;gap:4px">
-                    <button onClick="{{ r.collapse }}" style="width:20px;height:26px;flex:none;display:grid;place-items:center;color:var(--muted);transform:rotate({{ r.rot }});transition:transform .16s cubic-bezier(.22,.8,.3,1)">
+                  <div style="display:flex;align-items:flex-start;gap:4px;margin-top:{{ r.tgTop }}">
+                    <button onClick="{{ r.collapse }}" style="width:20px;height:{{ r.tgMinH }};flex:none;display:grid;place-items:center;color:var(--muted);transform:rotate({{ r.rot }}) scale({{ r.tgScale }});transition:transform .16s cubic-bezier(.22,.8,.3,1)">
                       <svg width="11" height="11" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1.2 7.6 5 3 8.8z"></path></svg>
                     </button>
-                    <div contentEditable="{{ editable }}" suppressContentEditableWarning="{{ true }}" ref="{{ r.ref }}" onInput="{{ r.input }}" onKeyDown="{{ r.key }}" onFocus="{{ r.focus }}" onBlur="{{ r.blur }}" onPaste="{{ r.paste }}" data-ph="Toggle" style="flex:1;min-width:0;padding:3px 2px;white-space:pre-wrap;line-height:1.5;font-size:16px;min-height:26px"></div>
+                    <sc-if value="{{ r.tgSource }}" hint-placeholder-val="{{ false }}"><span style="flex:none;padding-top:3px;color:var(--mk);font-family:var(--mono);font-size:13px;user-select:none">{{ r.tgMarks }}</span></sc-if>
+                    <div contentEditable="{{ editable }}" suppressContentEditableWarning="{{ true }}" ref="{{ r.ref }}" onInput="{{ r.input }}" onKeyDown="{{ r.key }}" onFocus="{{ r.focus }}" onBlur="{{ r.blur }}" onPaste="{{ r.paste }}" data-ph="{{ r.tgPh }}" style="flex:1;min-width:0;padding:3px 2px;white-space:pre-wrap;font-size:{{ r.tgSize }};font-weight:{{ r.tgWeight }};letter-spacing:{{ r.tgSpace }};line-height:{{ r.tgLine }};min-height:{{ r.tgMinH }}"></div>
                   </div>
                 </sc-if>
                 <sc-if value="{{ r.isCode }}" hint-placeholder-val="{{ false }}">
