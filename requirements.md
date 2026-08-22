@@ -143,6 +143,18 @@ Notion-class block editor.
   `locate()` returns the containing `parent` block alongside the hit, because a
   block nested in a toggle cannot climb out without knowing what it is inside.
 
+  **A toggle that stops being one hands its contents back.** Only a toggle has
+  an inside — nothing walks `children` for any other type — so turning one into
+  text took its contents off the page *and* out of the markdown export while
+  they sat on in the file, whole and unreachable. There are three doors into
+  that state (the ⠿ menu's *Turn into*, a markdown shortcut typed in the title,
+  and ⌫ at the start), so the rule lives at the one place every mutation
+  already passes through, `repair()`, rather than at each of them: a non-toggle
+  carrying `children` has them lifted into the list right after it. What was
+  inside the toggle becomes what follows it. The blank child `repair()` itself
+  guarantees is dropped rather than lifted, so emptying a toggle and turning it
+  into text leaves nothing behind.
+
   **Heading toggles.** A toggle can title a section at heading 1, 2 or 3 — the
   same typography, gutter offset and reader styling as the plain heading of
   that level, with the collapse arrow scaled to match. It is a `toggle`
@@ -204,6 +216,14 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
 
 ### 5.3 Editing model
 
+- **Saving** — a keystroke updates the model immediately and the store on a
+  debounce; `readBlock` is the only writer on that path. It compares the DOM
+  against what was last **saved**, never against the model, because `onInput`
+  has already written the model by then — comparing against it made the guard
+  permanently true, and typing alone never reached storage at all. The text
+  still arrived whenever some *other* edit (⏎, Tab, a menu, a checkbox) wrote
+  the page, which is why the loss stayed invisible: nearly every session
+  contains one. Type a sentence and close the tab, and it was gone.
 - **Undo / redo** — `⌘Z` / `⌘⇧Z`, covering block operations (turn into, move,
   delete, duplicate) as well as text.
 - **Multi-block selection** — lasso from the gutter beside the text, or `⌘A`
@@ -815,6 +835,7 @@ sections above, which are always current.
 
 | Date | Change |
 | --- | --- |
+| 2026-08-22 | **Two data-loss bugs in the editor, found by auditing the save and block-structure paths and reproduced in a browser before either was touched.** (1) **Typing alone never reached storage.** `readBlock` — the debounced writer behind every keystroke — guarded on `f.block.text === text`, which reads correctly and never once fired: `onInput` writes the model on the way past so the caret never waits on a render, so by the time the guard ran the two were always equal and `persist()` was skipped every time. The text still got saved whenever some *other* edit (⏎, Tab, a menu, a checkbox) wrote the page, which is exactly why this survived so long — nearly every session contains one. Type a sentence, close the tab, and it was gone. The guard now compares against what was last *saved*, tracked per element: the model is not evidence of anything there, since `readBlock` is the code that puts the text into it. (2) **A toggle that stopped being one lost its contents.** Only a toggle has an inside — nothing walks `children` for any other type — so *Turn into → Text*, a markdown shortcut typed in a toggle's title, and ⌫ at its start each took the toggle's children off the page and out of the markdown export while leaving them whole and unreachable in the file. Three doors, one rule, so it went into `repair()` (which every mutation already passes through) rather than into each: a non-toggle carrying `children` has them lifted into the list right after it, and the blank child `repair()` itself guarantees is dropped rather than lifted so an empty toggle leaves no litter. Verified: typed text lands in storage with no other edit and survives a reload, code blocks included; all three doors now keep the child on screen and in the export; and the surrounding behaviour still holds — a live toggle keeps its children, collapse hides them and expand returns them, an empty toggle leaves no stray paragraph, and ⌘Z restores the toggle. The heading-toggle and Backspace suites re-run clean, with no console errors. |
 | 2026-08-17 | **Heading toggles, and a ⌫ that can see the hidden markers.** (1) **Toggles came in one size.** A toggle can now title a section at heading 1, 2 or 3, matching the plain heading of that level in type, gutter offset and reader styling, with the arrow scaled to suit. It is a `toggle` with a `level`, not a fourth block type — `repair()`, the three ⏎ exits, Tab-to-nest, `flat()`, drag and the markdown writer all key off `type === 'toggle'` and needed no change; the menus name the levels through the pseudo-types `toggle1`…`toggle3`, unpacked by `blockSpec()` at `setBlockType()`, the one place a type is written (and the one place that *clears* a stale level, or a toggle turned into a paragraph and back would return as a heading). Inside a toggle the markdown hashes now set the toggle's own level instead of converting the block — the old path made a plain heading and left the toggle's children unreachable — and any level swaps to any other, while four or more hashes mean no heading and so do nothing at all. (2) **⌫ at the end of any inline run destroyed its formatting.** §5.1 keeps the markdown source in the DOM with the delimiters hidden, so at the end of `**bold**` the caret sits behind two invisible asterisks: one keystroke ate a delimiter and `bold` came back as a raw `**bold*`. ⌫ now deletes the last *visible* character, and when the run runs out of them it drops the delimiters too, so the text falls back to plain instead of leaving `****`. The mirror case is the same map: when only delimiters separate the caret from column 0, the caret visually *is* at the start, so the block-level ⌫ runs there rather than eating the opening marker. `markMap()`/`backspaceAt()` read the same `scan()` the renderer does — one pass, two consumers — so what counts as a marker can never drift from what is drawn, and source view (where the delimiters are visible) is deliberately left alone. Verified: `inline()` byte-identical to its predecessor across 31 inputs with the source round-tripping; 20 `backspaceAt` cases; and in the browser, all six inline marks deleting down to clean plain text, the three levels swapping in both directions, four hashes inert, collapse/⏎-into-child/markdown-export/source-view/⌘Z all intact, zero console errors. |
 | 2026-08-16 | **Demo banner's exit button was a 26px tap target on phones** — below the project's own 44px floor, and it is the *only* way back from a state the banner exists precisely because users would read it as data loss. The message and a 44px button cannot share one 41px row, so on mobile the bar stacks: message on top, full-width 44px button beneath (89px tall). Desktop keeps the single 41px row. Verified at a true 375px width: button 44×351 fully inside the bar, nothing overflowing. |
 | 2026-08-16 | **Demo mode is now announced, not silent.** Booting the demo replaces the whole workspace with seeded pages; with nothing on screen saying so, that is indistinguishable from having lost every note. A slim bar at the top of the app now states it and offers "Back to my notes" (`AStore.leaveDemo()`), instead of leaving the exit buried in settings. Added `--warn-bg` / `--warn-fg` / `--warn-bd` in both themes, following the existing `--add-*` / `--del-*` convention rather than overloading another token. Verified in both themes; the banner is absent in normal Firebase mode. |
