@@ -1876,6 +1876,15 @@ class Component extends DCLogic {
         e.preventDefault(); e.shiftKey ? this.redo() : this.undo(); return;
       }
       if ((e.metaKey || e.ctrlKey) && k === 'y' && this.state.route === 'app') { e.preventDefault(); this.redo(); return; }
+      /* Once a selection has crossed into whole-block mode nothing is
+         focused, so the block's own key handler is out of the picture and
+         growing the range is this listener's job. */
+      if (sel.length && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey &&
+          (e.key === 'ArrowUp' || e.key === 'ArrowDown') && this.state.route === 'app') {
+        e.preventDefault();
+        this.growBlockSel(e.key === 'ArrowUp' ? -1 : 1);
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && k === 'x' && sel.length > 1) {
         const blocks = sel.map(id => { const f = this.locate(id); return f && f.block; }).filter(Boolean);
         navigator.clipboard.writeText(AMD.toMarkdown(blocks, { pages: this.state.pages, dbs: this.state.dbs }));
@@ -1932,6 +1941,9 @@ class Component extends DCLogic {
     this._onDown = (e) => {
       if (this.state.menu && !e.target.closest('[data-menu]')) this.setState({ menu: null });
       if ((this.state.blockSel || []).length && !e.target.closest('[data-block]')) this.setState({ blockSel: [] });
+      /* a press starts a new selection wherever it lands: the old anchor and
+         moving end describe a range that no longer exists */
+      this._selAnchor = null; this._selHead = null;
     };
     window.addEventListener('mousedown', this._onDown);
     this._onUp = () => { this._anchor = null; };
