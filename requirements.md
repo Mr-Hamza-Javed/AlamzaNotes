@@ -117,6 +117,16 @@ Notion-class block editor.
   whose length scales with the file, and above ~120k characters the text stays
   plain rather than slow.
 
+  **One element, one block.** `sc-for` keys its rows by index, so when a row
+  leaves the middle of the list React hands the same editable element to
+  whichever block now sits at that position. It detaches the old ref before
+  attaching the new one, and ignoring that detach left `_els` pointing two
+  block ids at one element: `syncDom` then painted it twice, once per id, and
+  the last write won. Collapsing a toggle blanked the paragraph *below* it,
+  because the toggle's hidden child and that paragraph were sharing a node.
+  `elRef` lets go on detach; the id that still owns the element re-registers on
+  the same commit.
+
   The gutter has exactly **one owner**. React renders the span empty and never
   writes its text; the line numbers are painted from the model — on edit, and
   at the top of every DOM sync so undo, restore and language switches repaint
@@ -125,6 +135,13 @@ Notion-class block editor.
 - Math blocks: KaTeX.
 - Toggle blocks: collapsible with nested children. `repair()` keeps at least one
   child on every toggle, so it is never structurally a dead end.
+
+  The gutter's **＋ opens a line inside an open toggle**, not after it. The
+  button sits beside the toggle's own title, so the line it opens has to appear
+  under that title; putting it after the toggle dropped it below all the
+  contents, far from the button that was clicked, and it then did not collapse
+  with them. A *closed* toggle shows no inside, so there the next line is a
+  sibling, as it looks.
 
   A toggle must be **escapable by keyboard**, or it is a one-way door: ⏎ used to
   focus `children[0]`, so a toggle with nothing inside consumed the keystroke
@@ -200,6 +217,31 @@ behind. The same map answers the mirror case: when only delimiters lie between
 the caret and column 0, the caret visually *is* at the start, so the
 block-level ⌫ (merge into the block above / downgrade to a paragraph) runs
 there rather than eating the opening marker.
+
+**The caret we park is the caret we mean.** A `display:none` span holds no
+caret position at all, so the offset set after a run closes does not survive:
+the browser slides it back to the last *visible* spot, which is **inside** the
+run. Everything typed next then landed inside the delimiters — `**bold**` plus
+a space came back as `**bold more**`, the whole phrase bold; and when the slide
+put the caret between the two closing asterisks, a space produced `**bold* *`,
+which renders as a literal `*`, an italic run and another `*`. The same slide
+made ⏎ split at an offset no reader could see, tearing `**bold**` into
+`**bold***` above `*…**`.
+
+So typing never reads the caret back from the browser. An insertion of *n*
+characters at *p* puts the caret at *p + n*, which is not a matter of opinion,
+and that offset is remembered as `_want`. On the next keystroke, if the browser
+inserted somewhere else and **only invisible characters separate the two
+offsets**, the two are the same place on screen and the character merely landed
+on the wrong side of a marker: it is moved back. Any deliberate move — a click,
+an arrow, any key that is not a plain character — drops `_want`, so editing
+inside a bold word still extends it, and a caret *navigated* to the end of a run
+is inside it and keeps typing bold, the way Word, Docs and Notion all behave.
+Only the keystroke that **closes** a run leaves you outside it.
+
+Structural operations snap out too: `AMD.snapOut()` moves an offset that is
+strictly inside a delimiter run forward past it, so ⏎ never splits a pair in
+half. Offsets merely *next to* a run are honest positions and are left alone.
 
 Where a block holds anything invisible, `⌫` is **ours for every press**, not
 only at the edges. Chromium deletes a `display:none` span *together with* the
@@ -902,6 +944,7 @@ sections above, which are always current.
 
 | Date | Change |
 | --- | --- |
+| 2026-08-22 | **Three faults behind "weird editor behaviour", all measured rather than guessed.** (1) **Typing after a finished run went inside it.** A `display:none` span holds no caret position, so the offset parked after a run closes does not survive — the browser slides it to the last *visible* spot, inside the run. Tracing every keystroke of `**bold**` showed the caret reported as 7 of 8 the moment the run closed, already between its own closing asterisks: a following space produced `**bold* *` (a literal `*`, an italic run, another `*` — exactly the syntax reported appearing), and typing on produced `**bold more**` with the whole phrase bold. ⏎ split at the same invisible offset, tearing the pair into `**bold***` above `*…**`. Typing now never reads the caret back from the browser: an insertion of *n* characters at *p* puts it at *p + n*, remembered as `_want`, and if the next keystroke lands elsewhere with **only invisible characters between**, the two offsets are the same place on screen and the character is moved back to the intended side. Deliberate moves drop `_want`, so editing inside a bold word still extends it, and a caret navigated to the end of a run keeps typing bold as Word, Docs and Notion do — only the keystroke that *closes* a run leaves you outside. `AMD.snapOut()` does the same for structural operations, so ⏎ never splits a delimiter pair. (2) **A paragraph below a toggle went blank when the toggle collapsed.** `sc-for` keys rows by index, so a row leaving the middle of the list hands its editable element to the next block; `elRef` ignored React's detach, `_els` ended up pointing two ids at one element, and `syncDom` painted it twice with the last write winning. `elRef` now lets go on detach. This was content disappearing from the page while still in the file, and it was found while chasing the reported toggle complaint rather than reported directly. (3) **The gutter's ＋ on a toggle opened the line outside it.** The button sits beside the toggle's title, so the line it opens now appears under that title, inside an open toggle; a closed toggle shows no inside, so there it stays a sibling. Verified: ten source strings typed key by key come back byte-identical with no delimiter ever visible; typing inside a bold word still extends it; ⏎ after and inside a run both split correctly; the paragraph below a collapsing toggle stays on screen; the ＋ line collapses with the toggle; and all seven earlier suites re-run clean. |
 | 2026-08-22 | **The delimiter-aware `⌫` was only half a fix, and a block selection dragged the page nowhere.** (1) **Formatting still broke on `⌫`, and the earlier fix is why it was hard to see.** That fix took the key only when the character in front of the caret was itself a hidden delimiter, and handed every "ordinary" character back to the browser as an optimisation. But Chromium deletes a `display:none` span *together with* the character beside it: `⌫` over the `m` of `==mark==` removed the opening `==` as well, leaving `ark==` — and the surviving half showed as literal text, which is exactly the syntax the reporter saw appear. Found by sweeping `⌫` from every caret offset in a formatted block rather than testing the ends: the ends were all correct, and offsets 3, 7, 10 and 13 were the broken ones — every position sitting against a hidden span. So where a block holds anything invisible at all, `⌫` is now ours for every press; a block with no delimiters keeps the native key, which is where the optimisation actually belongs. (2) **The page did not follow a growing block selection.** Nothing is focused in that mode, so there is no caret for the browser to keep on screen and the selection simply ran off the bottom of a still page. The moving end is now scrolled in on every step with `nearest`, the least movement that brings it into view, so a selection growing inside the viewport does not jerk the page around. Verified: the offset sweep is clean at every position of `==mark==` and `see ==mark== here`; 23 `backspaceAt` cases; and in the browser, the selection starts without moving the page, scrolls down as it grows past the bottom and back up as it shrinks past the top, with the moving end on screen throughout. |
 | 2026-08-22 | **`⇧`+arrow could not select past the end of a block — and destroyed the selection trying.** The vertical-arrow branch never checked for `⇧`, so holding it while crossing to the next block called `focus()` on that block, which collapses the selection: `⇧↓` from mid-block wiped whatever was selected and dropped the caret below it with nothing selected at all. (Reachable before on the second press; the edge-detection fix earlier the same day made the crossing fire on the first, so it began to bite immediately.) The underlying constraint is not patchable: each block is its own contenteditable element, two of those are two editing hosts, and no browser selection can span them — a selection that needs to leave its block cannot grow, it has to change **kind**. So inside a block the browser keeps it, and at the true end of the text `⇧↑/↓` hands over to the whole-block selection the app already had for the gutter lasso and `⌘A`-twice: `blockSel` already drew the highlight and already backed copy/cut-as-Markdown, delete and replace-on-typing, so the work was wiring rather than building. The handover waits for the end of the *text* rather than the last visual line, so from mid-block the first `⇧↓` still selects the rest of the block and only the next crosses; `_selAnchor`/`_selHead` make `⇧` the other way shrink the range instead of growing it the wrong way, and a pointer press clears both. Blocks that hold no caret (a divider, a table) are included here, unlike in caret motion, since they are real blocks to copy or delete. One trap worth recording: React listens on the root container, so the same keypress went on to reach the window handler that grows an existing selection, and the range jumped two rows on the press that created it — the handover stops propagation. Verified: the first `⇧↓` extends text inside the block, the second selects two whole blocks (highlighted, DOM selection empty, nothing focused), further presses grow and `⇧↑` shrinks; Delete removes exactly the selected blocks, typing replaces them, Escape clears, `⇧↑` at the top of the page does nothing, and a divider is included rather than skipped. |
 | 2026-08-22 | **`←/→` could not leave a block, and one caret position could not be left at all.** Each block is its own contenteditable element, and to the browser two of those are two separate documents: caret motion stopped dead at the boundary, so `←` at the very start of a block and `→` at its very end simply did nothing, and the only ways between blocks were the mouse and `↑/↓`. They now step into the neighbour — over anything that holds no caret (a divider, table, sub-page or database), the same skip the vertical keys use. The sharper half of this was found by measuring where the caret actually sits after typing: `**bold**` leaves it *between the two closing asterisks*, inside a `display:none` span with no client rect, and from there the browser cannot move it in either direction — `→` did nothing, for ever, from a position that typing one bold word reaches. So the edge test reads the reader's view rather than the string's: everything between the caret and the end being a hidden delimiter *is* the end, exactly as `⌫` already treats the other edge. Mid-text needed no help — Chromium steps over a whole marker run in a single press, which is why this only ever bit at the edges. `⇧` and held modifiers are untouched, since selection and word jumps belong to the browser. Verified: `←` and `→` cross in both directions, step over a divider, do nothing at the first block, leave mid-text motion and `⇧→` alone, and escape a caret parked between closing delimiters — with the earlier suites re-run clean. |
