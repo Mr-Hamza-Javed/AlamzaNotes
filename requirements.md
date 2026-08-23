@@ -89,7 +89,11 @@ Notion-class block editor.
 - **Slash menu** (`/`) — filterable list of every block type, keyboard navigable.
 - **Markdown input shortcuts** while typing: `# `, `## `, `### `, `- `, `1. `,
   `[] `, `> `, ` ``` `, `---`, `$$`. Inside a toggle the hashes set the
-  toggle's heading level instead (§5, Heading toggles).
+  toggle's heading level instead (§5, Heading toggles). The prefix is removed,
+  so **the caret moves left by exactly what was removed** — it does not jump to
+  the end of the line. Typed in front of an existing "Hello world", `# ` made
+  the heading but left the caret at column 11, and everything typed next went
+  to the back of the line the reader was standing at the front of.
 - **Drag handle** (`⠿`) on hover — drag to reorder blocks.
 - **Block hover menu** — Turn into, Duplicate, Copy link, Move to, Delete.
 - **Inline marks**: `**bold**`, `*italic*`, `***both***`, `` `code` ``,
