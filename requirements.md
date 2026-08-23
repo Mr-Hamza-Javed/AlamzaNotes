@@ -244,6 +244,14 @@ inside a bold word still extends it, and a caret *navigated* to the end of a run
 is inside it and keeps typing bold, the way Word, Docs and Notion all behave.
 Only the keystroke that **closes** a run leaves you outside it.
 
+The same reasoning holds at the other edge, and there it needs no `_want`: if
+**everything before the insertion is invisible**, the reader was standing at
+column 0. `Home` in `**bold** tail` cannot park a caret before the hidden `**`,
+so the browser slid it to offset 2 and the next character came back bold, as
+`**Xbold**`. Nothing sits to the left of column 0 for formatting to be
+inherited from, so the character belongs outside the run — as it does in every
+editor.
+
 Structural operations snap out too: `AMD.snapOut()` moves an offset that is
 strictly inside a delimiter run forward past it, so ⏎ never splits a pair in
 half. Offsets merely *next to* a run are honest positions and are left alone.
