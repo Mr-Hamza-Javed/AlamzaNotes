@@ -389,6 +389,35 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   surviving rows still merge cell by cell either way. Where a step changed the
   same field that was also changed elsewhere, the step wins — it is the field
   the reader is undoing.
+
+  **History belongs to the page the work was done on, and survives leaving it.**
+  There used to be one history object keyed by page id, so opening anything
+  else threw the previous page's away — and since opening a sub-page or a
+  database row *navigates*, the very act of making one destroyed the history of
+  the page it was made from. Each page keeps its own record now; the twelve
+  most recently visited are held and the least recently visited is dropped
+  first. Anything still on a debounce is filed on the way out, for the page it
+  was typed on, rather than lost.
+
+  Blocks and databases are stored as **separate strings**. A database is by far
+  the heavier of the two — on a 400-row table it is effectively the whole
+  snapshot — and it usually does not move while someone types, so an entry
+  whose databases match the one before it keeps that same string rather than a
+  second copy of the same characters. A budget across all pages bounds the lot:
+  whole pages go first, least recently visited first, then the oldest steps of
+  the page in hand. The byte count adds each entry's own strings, so a shared
+  database is counted more than once and the budget trims a little sooner than
+  it strictly must.
+
+  **A page files only the database changes it made itself.** A passive
+  snapshot — taken when typing pauses, or on the way into `⌘Z` — that differs
+  *only* in its databases is recording someone else's work, and filing it would
+  put a step in this page's history that this page never took, so the next `⌘Z`
+  would undo a stranger's edit. Deliberate database edits all arrive through
+  `patchDb`, which says so; anything that adds or removes a database block
+  changes the blocks too. A database-only difference with no such claim is
+  therefore always foreign and stays out of the history — which also keeps rows
+  arriving from storage out of it.
 - **Multi-block selection** — lasso from the gutter beside the text, `⌘A`
   twice for the page, or `⇧↑/↓` out of a block.
 
