@@ -348,6 +348,15 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   `dbsUsedBy()` only walks blocks, and a row page holds no database block.
   Restoring it wholesale would be the whole-database hazard that delta restore
   exists to remove, so it waits for that.)
+
+  **Neither key writes in a view the reader may not edit** — a version preview,
+  a page sitting in the Trash, a published page someone is only reading.
+  `_mutate` has always checked `isReadOnly()`; `applyHist` never did, so `⌘Z`
+  and `⌘Y` went straight past it into `setState` and edited the document
+  anyway. The check sits on the function that **writes**, so no future caller
+  can slip past it, and again on the two keys, so nothing is filed on the way
+  in and no toast claims an edit that never happened. Leaving the read-only
+  view restores both keys immediately.
 - **Multi-block selection** — lasso from the gutter beside the text, `⌘A`
   twice for the page, or `⇧↑/↓` out of a block.
 
