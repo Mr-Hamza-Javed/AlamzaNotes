@@ -369,6 +369,26 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   already under way — and `histLater()` files the result on the pause. The
   timer carries the page it belongs to, so a run still pending when the reader
   navigates away cannot file itself into whatever page is open when it fires.
+
+  **A database is restored by difference, not wholesale.** Undo means "go back
+  one step", not "make everything look the way it did then". For blocks the two
+  are the same thing, since a page's blocks are edited only from that page. A
+  database is not: the same one is edited from the page it sits on **and** from
+  inside every row opened as its own page, so putting the snapshot's copy back
+  silently threw away work done in the other place — set a property from inside
+  a row page, return to the host, press `⌘Z` on something unrelated, and the
+  property was gone with nothing to show it had happened.
+
+  So only what the *step* changed is applied: `from` is the database as it
+  stood at the step being left, `to` as it stood at the step being entered, and
+  any field where those two agree keeps whatever it holds now. Fields are
+  compared one level at a time — the database's own fields, then the row list,
+  then each row's cells — because a whole-object comparison would call the
+  entire database "changed" the moment one cell moved. Which rows exist and in
+  what order is one fact about the list, so it moves only if the step moved it;
+  surviving rows still merge cell by cell either way. Where a step changed the
+  same field that was also changed elsewhere, the step wins — it is the field
+  the reader is undoing.
 - **Multi-block selection** — lasso from the gutter beside the text, `⌘A`
   twice for the page, or `⇧↑/↓` out of a block.
 
