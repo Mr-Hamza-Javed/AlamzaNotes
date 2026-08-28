@@ -357,6 +357,18 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   can slip past it, and again on the two keys, so nothing is filed on the way
   in and no toast claims an edit that never happened. Leaving the read-only
   view restores both keys immediately.
+
+  **Every writer files the state it is about to leave behind.** `mutate` files
+  on *both* sides of a structural change, so such an edit always has a step
+  behind it. The writers that go through the DOM — typing, `⌫`/`⌦`, the code
+  block — cannot do that, since filing per keystroke would pack the stack with
+  single characters, so they file once the reader pauses. That left the run
+  itself with no "before": on a freshly opened page the stack was empty and the
+  first thing anyone typed could not be undone at all. `histMark()` files that
+  "before" exactly once per run — the pending timer is what says a run is
+  already under way — and `histLater()` files the result on the pause. The
+  timer carries the page it belongs to, so a run still pending when the reader
+  navigates away cannot file itself into whatever page is open when it fires.
 - **Multi-block selection** — lasso from the gutter beside the text, `⌘A`
   twice for the page, or `⇧↑/↓` out of a block.
 
