@@ -334,6 +334,20 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   exactly as before; when something *has* changed it is filed, which takes the
   forward stack with it — the same rule any new edit follows, and the reason a
   new edit kills redo.
+
+  **The page title is filed like any other edit.** It sits in every snapshot,
+  but nothing ever filed one *for* it: `⌘Z` could not take a title back, and —
+  worse — undoing anything **else** landed on a snapshot carrying the old title
+  and wiped what had been typed since. The state as it stood *before* a run of
+  title keystrokes is filed once, the result on a pause, so a whole title is
+  one undo step and stopping then typing again gives two. On a database row
+  page the title also mirrors into the row's first cell; `patchDb` files
+  history on every call, which alone put one entry per **keystroke** in the
+  stack, so that write is told not to and the debounce owns the filing for both
+  kinds of page. (The mirrored cell itself is not in a row page's snapshot —
+  `dbsUsedBy()` only walks blocks, and a row page holds no database block.
+  Restoring it wholesale would be the whole-database hazard that delta restore
+  exists to remove, so it waits for that.)
 - **Multi-block selection** — lasso from the gutter beside the text, `⌘A`
   twice for the page, or `⇧↑/↓` out of a block.
 
