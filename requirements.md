@@ -321,8 +321,19 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   still arrived whenever some *other* edit (⏎, Tab, a menu, a checkbox) wrote
   the page, which is why the loss stayed invisible: nearly every session
   contains one. Type a sentence and close the tab, and it was gone.
-- **Undo / redo** — `⌘Z` / `⌘⇧Z`, covering block operations (turn into, move,
-  delete, duplicate) as well as text.
+- **Undo / redo** — `⌘Z` / `⌘⇧Z` (and `⌘Y`), covering block operations (turn
+  into, move, delete, duplicate) as well as text.
+
+  **Both keys file whatever is still pending before they move.** Typing files
+  its history on a 900ms debounce, so a character struck a moment ago is not in
+  the stack yet, and `applyHist` overwrites the page wholesale — anything
+  unfiled at that moment is simply gone. `undo()` always guarded against this;
+  `redo()` did not, and it destroyed that typing outright: undo a step, type,
+  press `⌘Y`, and what you typed had never existed. `syncTail()` is a no-op
+  when nothing has changed, so a redo with nothing pending walks forward
+  exactly as before; when something *has* changed it is filed, which takes the
+  forward stack with it — the same rule any new edit follows, and the reason a
+  new edit kills redo.
 - **Multi-block selection** — lasso from the gutter beside the text, `⌘A`
   twice for the page, or `⇧↑/↓` out of a block.
 
