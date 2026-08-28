@@ -418,6 +418,19 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   changes the blocks too. A database-only difference with no such claim is
   therefore always foreign and stays out of the history — which also keeps rows
   arriving from storage out of it.
+
+  **A sub-page moves in both of its places.** It lives twice over: a block on
+  the host page, and a page in the workspace. A snapshot carries only the
+  blocks, so undo put the block back and left its page in the Trash — a block
+  pointing at a trashed page — and, the other way, took the block away and left
+  the page behind, sitting in the sidebar with nothing pointing at it. Applying
+  a step now reconciles the two: a sub-page the step brings back comes out of
+  the Trash, one the step takes away goes into it. Only the sub-pages **this
+  step** moves are touched, so a page the reader trashed from the sidebar —
+  whose block is still on the host — is never resurrected by an unrelated undo.
+  Making a sub-page also files its own step at last: the block lands on the
+  *parent's* page while the call navigates to the child, so the state after the
+  insert is filed against the parent by name.
 - **Multi-block selection** — lasso from the gutter beside the text, `⌘A`
   twice for the page, or `⇧↑/↓` out of a block.
 
