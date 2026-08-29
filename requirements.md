@@ -594,6 +594,9 @@ workspaces/<uid>/
   vmeta/<pageId>          snapshot metadata (incl. precomputed +/− stat)
   vdata/<pageId>/<vId>    snapshot bodies  · write-once, cold
   dbs/<dbId>              — removed; replaced by dbmeta + dbrow
+
+pub/<slug>                a published page, world-readable, owner-writable
+                          — a self-contained copy, outside the workspace
 ```
 
 ### The five rules
@@ -1102,6 +1105,43 @@ to treat any page a loaded row claims as an orphan.
 - **Publish to web** — read-only public reader view with its own clean layout.
 - **Invite by email** with roles: viewer / commenter / editor.
 - **Link with password** option on published links.
+
+### 8.1 What a published page actually is
+
+A published page is a **copy**, written to `pub/<slug>` — a node the security
+rules make world-readable and owner-writable. The workspace itself stays
+exactly as private as it was: this adds somewhere to put a copy rather than
+opening a door into the original. `workspaces/<uid>` is still readable and
+writable only by `auth.uid === $uid`, and a slug already claimed cannot be
+overwritten by anyone but the account that wrote it.
+
+The copy is **self-contained** — title, icon, blocks and every table those
+blocks embed — because a visitor has no account and no way to fetch a body or
+a row set on demand. It is a snapshot: editing the page afterwards does not
+change what visitors see until *Update the published copy*.
+
+**The link is `#/s/<slug>`**, a route the app answers. It used to be
+`<origin>/s/<slug>`, a path nothing served, so every "public link" the app
+produced was a 404.
+
+**A password link is encrypted, not gated.** Asking for a password in the
+reader would be theatre: the node is world-readable, so anyone could fetch the
+body and skip the prompt. The payload is sealed with AES-GCM under a key
+derived from the password (PBKDF2-SHA256, 150k rounds, fresh salt and IV per
+publish), so the stored bytes are unreadable without it. A wrong password
+fails authentication and returns nothing rather than plausible rubbish.
+
+Publishing marks the page published only once the write has landed, and demo
+mode says plainly that its link works in that browser only rather than
+implying a public URL.
+
+**An invite is addressed.** One array holds both the invites an account sent
+and the ones it received, so without a recipient an owner who invited a viewer
+and then accepted their own invitation from their own inbox became a viewer of
+their own page, unable to edit it. `invitedMe()` decides, and an invite with no
+recipient recorded cannot lower anyone's role. Cross-account delivery still
+needs a backend; until then the invite list is local to the workspace that
+wrote it.
 - **Presence**: "who's viewing" avatars + `Last edited by X · time`.
 - **Copy link** button on desktop; native-style **share sheet** on mobile.
 

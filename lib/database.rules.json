@@ -17,6 +17,30 @@
           }
         }
       }
+    },
+
+    "pub": {
+      "$slug": {
+        ".read": true,
+
+        ".write": "auth != null && (data.exists() ? data.child('o').val() === auth.uid : newData.child('o').val() === auth.uid)",
+
+        ".validate": "newData.hasChildren(['o', 'u']) && newData.child('o').val() === auth.uid && newData.child('u').isNumber()",
+
+        "o": { ".validate": "newData.isString()" },
+        "u": { ".validate": "newData.isNumber()" },
+        "t": { ".validate": "newData.isString()" },
+        "i": { ".validate": "newData.isString()" },
+        "b": {},
+        "d": {},
+        "enc": {
+          "s": { ".validate": "newData.isString()" },
+          "iv": { ".validate": "newData.isString()" },
+          "ct": { ".validate": "newData.isString()" },
+          "$other": { ".validate": false }
+        },
+        "$other": { ".validate": false }
+      }
     }
   }
 }

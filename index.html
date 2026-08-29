@@ -1162,8 +1162,21 @@ button:active{transform:scale(.985);opacity:.85}
     <span style="font-size:13px;color:var(--muted)">Published with Alamza Notes</span>
     <div style="flex:1"></div>
     <span style="font-size:12px;color:var(--faint)">Read-only</span>
-    <button onClick="{{ exitPublic }}" style="height:30px;padding:0 12px;border-radius:5px;font-size:12.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover)">Exit preview</button>
+    <button onClick="{{ exitPublic }}" style="height:30px;padding:0 12px;border-radius:5px;font-size:12.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover)">{{ exitPublicLabel }}</button>
   </div>
+  <sc-if value="{{ publicLoading }}" hint-placeholder-val="{{ false }}">
+    <div style="max-width:360px;margin:16vh auto;text-align:center;color:var(--muted)">
+      <span style="display:inline-block;width:16px;height:16px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--accent);animation:aSpin .7s linear infinite"></span>
+      <div style="margin-top:12px;font-size:13.5px">Fetching this page…</div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ publicMissing }}" hint-placeholder-val="{{ false }}">
+    <div style="max-width:400px;margin:14vh auto;text-align:center">
+      <div style="font-size:34px">🔗</div>
+      <div style="margin-top:14px;font-size:20px;font-weight:700">This link is not published</div>
+      <div style="margin-top:6px;color:var(--muted);font-size:13.5px;line-height:1.6">It may have been turned off, or the address may be mistyped.</div>
+    </div>
+  </sc-if>
   <sc-if value="{{ publicLocked }}" hint-placeholder-val="{{ false }}">
     <div style="max-width:360px;margin:14vh auto;text-align:center">
       <div style="font-size:34px">🔒</div>
@@ -1176,9 +1189,9 @@ button:active{transform:scale(.985);opacity:.85}
   </sc-if>
   <sc-if value="{{ publicOpen }}" hint-placeholder-val="{{ true }}">
     <div style="max-width:720px;margin:0 auto;padding:56px 28px 120px">
-      <div style="font-size:46px;line-height:1">{{ pageIcon }}</div>
-      <div style="margin-top:14px;font-size:40px;font-weight:700;letter-spacing:-.022em;line-height:1.15;text-wrap:pretty">{{ pageTitle }}</div>
-      <div style="margin-top:10px;font-size:13px;color:var(--faint)">{{ editedLabel }}</div>
+      <div style="font-size:46px;line-height:1">{{ publicIcon }}</div>
+      <div style="margin-top:14px;font-size:40px;font-weight:700;letter-spacing:-.022em;line-height:1.15;text-wrap:pretty">{{ publicTitle }}</div>
+      <div style="margin-top:10px;font-size:13px;color:var(--faint)">{{ publicWhen }}</div>
       <div style="margin-top:34px;font-size:16.5px;line-height:1.75" ref="{{ publicRef }}"></div>
     </div>
   </sc-if>
@@ -1441,13 +1454,17 @@ button:active{transform:scale(.985);opacity:.85}
           <button onClick="{{ copyShare }}" style="height:38px;padding:0 14px;border-radius:4px;background:var(--accent);color:#fff;font-size:13px;font-weight:600;white-space:nowrap">Copy link</button>
         </div>
         <div style="font-size:11.5px;color:var(--faint);line-height:1.5;padding:0 2px">{{ shareHostNote }}</div>
+        <sc-if value="{{ canRepublish }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ republish }}" title="Send the current version of this page to the published copy" style="height:32px;border-radius:4px;border:1px solid var(--border);font-size:12.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover);color:var(--text)">Update the published copy</button>
+        </sc-if>
         <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid var(--border);border-radius:6px">
           <span style="font-size:15px">🔒</span>
           <div style="flex:1;min-width:0">
             <div style="font-size:13.5px;font-weight:600">Require a password</div>
             <sc-if value="{{ pwOn }}" hint-placeholder-val="{{ false }}">
-              <input value="{{ pwVal }}" onChange="{{ setPw }}" placeholder="Set a password" style="margin-top:6px;width:100%;height:32px;border-radius:5px;border:1px solid var(--border);background:var(--canvas);padding:0 10px;font-size:13px;outline:none" />
+              <input value="{{ pwVal }}" onChange="{{ setPw }}" onBlur="{{ commitPw }}" placeholder="Set a password" style="margin-top:6px;width:100%;height:32px;border-radius:5px;border:1px solid var(--border);background:var(--canvas);padding:0 10px;font-size:13px;outline:none" />
             </sc-if>
+            <div style="font-size:11.5px;color:var(--faint);margin-top:5px;line-height:1.5">{{ pwNote }}</div>
           </div>
           <button onClick="{{ togglePw }}" style="width:42px;height:24px;flex:none;border-radius:20px;background:{{ pwTrack }};position:relative;transition:background .15s">
             <span style="position:absolute;top:3px;left:{{ pwKnob }};width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .15s"></span>
@@ -1874,6 +1891,7 @@ class Component extends DCLogic {
     focusId: null, hoverId: null, dragId: null, dropId: null,
     panel: null, modal: null, sheet: null, menu: null, slash: null,
     dbView: {}, roVersion: null, toast: null, cellEdit: null,
+    pubSlug: null, pubDoc: null, pubLoading: false, pubLocked: false, pubMissing: false,
     diffA: null, diffB: 'current', diffMode: 'split',
     isMobile: false, sidebarOpen: true, search: '', kbOpen: false
   };
@@ -2075,6 +2093,10 @@ class Component extends DCLogic {
         route: (user || (AStore.mode === 'local' && this.props.startSignedIn !== false)) ? 'app' : 'auth'
       }), () => {
         this.applyTheme(); this.syncDom();
+        /* A published link is a whole session on its own: no workspace, no
+           account, one read. Answer it before anything else touches the app. */
+        const slug = this.publicSlugFromUrl();
+        if (slug) { this.openPublic(slug); return; }
         if (this.state.pageId) this.ensureBody(this.state.pageId);
         /* boot resolves the first page without going through openPage */
         this.syncVersionMeta();
