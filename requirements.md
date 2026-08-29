@@ -409,9 +409,16 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   database is counted more than once and the budget trims a little sooner than
   it strictly must.
 
-  The three numbers sit together at the top of `part-tools.js`: **350 steps** a
-  page, **12 pages**, **24 MB** over all of them, and a **1800 ms** pause
-  separating one step from the next. The pause is what decides how much a
+  A run ends on a **pause or a length**, whichever comes first. The pause alone
+  was not enough: type a whole paragraph without stopping and the lot would be
+  one step, so a single `⌘Z` would take the paragraph. A run therefore also
+  ends after **80 keystrokes**, which is about a line of prose — a reasonable
+  amount to lose at once. Deletions count toward a run the same way, so holding
+  `⌫` through a paragraph does not become one step either.
+
+  The numbers sit together at the top of `part-tools.js`: **350 steps** a page,
+  **12 pages**, **24 MB** over all of them, an **1800 ms** pause and an
+  **80-keystroke** run cap. The pause is what decides how much a
   single `⌘Z` takes back: a gap shorter than it continues the same step, so
   deleting something a second after typing it undoes as one edit. The byte
   budget is what makes 350 safe — 350 steps of a ten-block page is 0.4 MB and of
