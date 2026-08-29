@@ -325,7 +325,7 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   into, move, delete, duplicate) as well as text.
 
   **Both keys file whatever is still pending before they move.** Typing files
-  its history on a 900ms debounce, so a character struck a moment ago is not in
+  its history on a pause, so a character struck a moment ago is not in
   the stack yet, and `applyHist` overwrites the page wholesale — anything
   unfiled at that moment is simply gone. `undo()` always guarded against this;
   `redo()` did not, and it destroyed that typing outright: undo a step, type,
@@ -408,6 +408,15 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   the page in hand. The byte count adds each entry's own strings, so a shared
   database is counted more than once and the budget trims a little sooner than
   it strictly must.
+
+  The three numbers sit together at the top of `part-tools.js`: **350 steps** a
+  page, **12 pages**, **24 MB** over all of them, and a **1800 ms** pause
+  separating one step from the next. The pause is what decides how much a
+  single `⌘Z` takes back: a gap shorter than it continues the same step, so
+  deleting something a second after typing it undoes as one edit. The byte
+  budget is what makes 350 safe — 350 steps of a ten-block page is 0.4 MB and of
+  a 200-block page 8 MB, but of an 800-block page it would be 32 MB, so there
+  the budget trims first and the page settles around 330 steps.
 
   **A page files only the database changes it made itself.** A passive
   snapshot — taken when typing pauses, or on the way into `⌘Z` — that differs
