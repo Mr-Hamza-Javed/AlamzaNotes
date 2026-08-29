@@ -431,6 +431,14 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   Making a sub-page also files its own step at last: the block lands on the
   *parent's* page while the call navigates to the child, so the state after the
   insert is filed against the parent by name.
+
+  **A page's icon is part of the page**, so it travels in the snapshot and `⌘Z`
+  takes it back — set, changed and cleared alike, one step each. It is filed on
+  both sides the way a structural edit is, through `patchPageHist()`;
+  `patchPage` itself stays out of the history, since every mutation writes
+  blocks through it and the title files its own runs on a pause. (A page has no
+  *cover*: that field belongs to database **rows**, and rows travel inside the
+  database part of the snapshot already.)
 - **Multi-block selection** — lasso from the gutter beside the text, `⌘A`
   twice for the page, or `⇧↑/↓` out of a block.
 
