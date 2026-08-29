@@ -59,8 +59,8 @@ Share     { published, slug, password|null, invites[{email,role}], role: viewer|
 Block types: `p, h1, h2, h3, ul, ol, todo, toggle, quote, callout, divider,
 code, math, table, columns, subpage, database`.
 
-Blocks also carry optional `color`, `bg`, `comments[]`, `rows[][]` (table) and
-`cols[][]` (columns).
+Blocks also carry optional `color`, `bg`, `comments[]`, `rows[][]` (table),
+`cols[][]` (columns) and `level` (toggle: 1–3 for a heading toggle).
 
 ## 4. Pages & nesting
 
@@ -88,12 +88,21 @@ Notion-class block editor.
 
 - **Slash menu** (`/`) — filterable list of every block type, keyboard navigable.
 - **Markdown input shortcuts** while typing: `# `, `## `, `### `, `- `, `1. `,
-  `[] `, `> `, ` ``` `, `---`, `$$`.
+  `[] `, `> `, ` ``` `, `---`, `$$`. Inside a toggle the hashes set the
+  toggle's heading level instead (§5, Heading toggles). The prefix is removed,
+  so **the caret moves left by exactly what was removed** — it does not jump to
+  the end of the line. Typed in front of an existing "Hello world", `# ` made
+  the heading but left the caret at column 11, and everything typed next went
+  to the back of the line the reader was standing at the front of.
 - **Drag handle** (`⠿`) on hover — drag to reorder blocks.
 - **Block hover menu** — Turn into, Duplicate, Copy link, Move to, Delete.
-- **Inline marks**: `**bold**`, `*italic*`, `` `code` ``, `~~strike~~`,
-  `==highlight==`, `[label](url)`.
+- **Inline marks**: `**bold**`, `*italic*`, `***both***`, `` `code` ``,
+  `~~strike~~`, `==highlight==`, `[label](url)`. `___both___` reads the same as
+  `***both***`.
 - Keyboard: Enter = new block, Backspace at start = merge/downgrade,
+  Backspace inside text = one *visible* character (§5.1),
+  **Ctrl/Alt + Backspace or Delete = one whole word**, counted the way the
+  reader sees it (§5.1),
   Tab / Shift+Tab = indent, Cmd/Ctrl+B/I/E, Cmd/Ctrl+Enter = toggle todo.
 - Code blocks: language selector + highlight.js.
   A code block is a **literal container**. Whatever goes in comes back out
@@ -115,6 +124,16 @@ Notion-class block editor.
   whose length scales with the file, and above ~120k characters the text stays
   plain rather than slow.
 
+  **One element, one block.** `sc-for` keys its rows by index, so when a row
+  leaves the middle of the list React hands the same editable element to
+  whichever block now sits at that position. It detaches the old ref before
+  attaching the new one, and ignoring that detach left `_els` pointing two
+  block ids at one element: `syncDom` then painted it twice, once per id, and
+  the last write won. Collapsing a toggle blanked the paragraph *below* it,
+  because the toggle's hidden child and that paragraph were sharing a node.
+  `elRef` lets go on detach; the id that still owns the element re-registers on
+  the same commit.
+
   The gutter has exactly **one owner**. React renders the span empty and never
   writes its text; the line numbers are painted from the model — on edit, and
   at the top of every DOM sync so undo, restore and language switches repaint
@@ -123,6 +142,13 @@ Notion-class block editor.
 - Math blocks: KaTeX.
 - Toggle blocks: collapsible with nested children. `repair()` keeps at least one
   child on every toggle, so it is never structurally a dead end.
+
+  The gutter's **＋ opens a line inside an open toggle**, not after it. The
+  button sits beside the toggle's own title, so the line it opens has to appear
+  under that title; putting it after the toggle dropped it below all the
+  contents, far from the button that was clicked, and it then did not collapse
+  with them. A *closed* toggle shows no inside, so there the next line is a
+  sibling, as it looks.
 
   A toggle must be **escapable by keyboard**, or it is a one-way door: ⏎ used to
   focus `children[0]`, so a toggle with nothing inside consumed the keystroke
@@ -141,6 +167,37 @@ Notion-class block editor.
   `locate()` returns the containing `parent` block alongside the hit, because a
   block nested in a toggle cannot climb out without knowing what it is inside.
 
+  **A toggle that stops being one hands its contents back.** Only a toggle has
+  an inside — nothing walks `children` for any other type — so turning one into
+  text took its contents off the page *and* out of the markdown export while
+  they sat on in the file, whole and unreachable. There are three doors into
+  that state (the ⠿ menu's *Turn into*, a markdown shortcut typed in the title,
+  and ⌫ at the start), so the rule lives at the one place every mutation
+  already passes through, `repair()`, rather than at each of them: a non-toggle
+  carrying `children` has them lifted into the list right after it. What was
+  inside the toggle becomes what follows it. The blank child `repair()` itself
+  guarantees is dropped rather than lifted, so emptying a toggle and turning it
+  into text leaves nothing behind.
+
+  **Heading toggles.** A toggle can title a section at heading 1, 2 or 3 — the
+  same typography, gutter offset and reader styling as the plain heading of
+  that level, with the collapse arrow scaled to match. It is a `toggle`
+  carrying a `level`, **not** a fourth block type: `repair()`, the three ⏎
+  exits, Tab-to-nest, `flat()`, drag and the markdown writer all key off
+  `type === 'toggle'` and go on working untouched. The menus need names for
+  the three, so they use the pseudo-types `toggle1`/`toggle2`/`toggle3`, which
+  `blockSpec()` unpacks at the single place a block's type is written.
+  `setBlockType()` is that place, and it *deletes* the level for anything that
+  is not a heading toggle — otherwise a toggle turned into a paragraph and
+  back would silently return as a heading.
+
+  Inside a toggle, `# `/`## `/`### ` set the **toggle's own** level rather than
+  converting the block. Falling through to the plain heading shortcut would
+  drop the toggle's children on the floor, since a toggle is the one block
+  whose contents live inside it. Any of the three levels can be swapped for
+  any other at any time, and past three hashes there is no heading to mean, so
+  nothing happens and the text stays exactly as typed.
+
 ### 5.1 Live-preview inline markdown (critical)
 
 The editable DOM **always holds the exact markdown source**. Marker characters
@@ -156,6 +213,97 @@ The editable DOM **always holds the exact markdown source**. Marker characters
 Because markers live in the DOM as real text, `textContent` round-trips to
 lossless markdown. This is what guarantees §5.2.
 
+**Backspace has to know the markers are there.** The character in front of the
+caret is not always the character the reader sees: at the end of `**bold**` two
+invisible asterisks sit between them, so a plain ⌫ ate a delimiter and the
+whole run lost its formatting in one keystroke — press it once at the end of a
+bold word and `bold` became a raw `**bold*`. ⌫ therefore deletes the last
+**visible** character instead, and when that empties the run it takes the
+delimiters with it, so the text falls back to plain rather than leaving `****`
+behind. The same map answers the mirror case: when only delimiters lie between
+the caret and column 0, the caret visually *is* at the start, so the
+block-level ⌫ (merge into the block above / downgrade to a paragraph) runs
+there rather than eating the opening marker.
+
+**The caret we park is the caret we mean.** A `display:none` span holds no
+caret position at all, so the offset set after a run closes does not survive:
+the browser slides it back to the last *visible* spot, which is **inside** the
+run. Everything typed next then landed inside the delimiters — `**bold**` plus
+a space came back as `**bold more**`, the whole phrase bold; and when the slide
+put the caret between the two closing asterisks, a space produced `**bold* *`,
+which renders as a literal `*`, an italic run and another `*`. The same slide
+made ⏎ split at an offset no reader could see, tearing `**bold**` into
+`**bold***` above `*…**`.
+
+So typing never reads the caret back from the browser. An insertion of *n*
+characters at *p* puts the caret at *p + n*, which is not a matter of opinion,
+and that offset is remembered as `_want`. On the next keystroke, if the browser
+inserted somewhere else and **only invisible characters separate the two
+offsets**, the two are the same place on screen and the character merely landed
+on the wrong side of a marker: it is moved back. Any deliberate move — a click,
+an arrow, any key that is not a plain character — drops `_want`, so editing
+inside a bold word still extends it, and a caret *navigated* to the end of a run
+is inside it and keeps typing bold, the way Word, Docs and Notion all behave.
+Only the keystroke that **closes** a run leaves you outside it.
+
+The same reasoning holds at the other edge, and there it needs no `_want`: if
+**everything before the insertion is invisible**, the reader was standing at
+column 0. `Home` in `**bold** tail` cannot park a caret before the hidden `**`,
+so the browser slid it to offset 2 and the next character came back bold, as
+`**Xbold**`. Nothing sits to the left of column 0 for formatting to be
+inherited from, so the character belongs outside the run — as it does in every
+editor.
+
+Structural operations snap out too: `AMD.snapOut()` moves an offset that is
+strictly inside a delimiter run forward past it, so ⏎ never splits a pair in
+half. Offsets merely *next to* a run are honest positions and are left alone.
+
+**A link is split the way Notion splits one.** `[label](url)` is one word to
+the reader but four pieces of syntax to the parser, and only the label holds
+caret positions at all. ⏎ inside the label closes the link on the first block
+and reopens it on the second, so both halves stay links; ⏎ on either *edge* of
+the label keeps the link whole rather than making an empty one; and ⏎ inside
+the `](url)` part, where no reader can put a caret, moves past the link.
+Nothing else in a label is live — `scan()` does not parse emphasis inside one —
+so a `*` or `==` written in there is ordinary text and is never closed or
+reopened as a run.
+
+Where a block holds anything invisible, **`⌫` and `⌦` are both ours for every
+press**, not only at the edges. Chromium deletes a `display:none` span *together with* the
+character beside it: `⌫` over the `m` of `==mark==` took the opening `==` with
+it and left the other half showing as literal text. Handing an "ordinary"
+character back to the browser was never safe next to a hidden delimiter. A
+block with no delimiters in it keeps the native key. `⌦` is the same rule
+forwards, and when nothing but delimiters lies ahead the caret is visually at
+the end of the block, so the merge-with-the-next-block rule runs there —
+`⌦` at the visual end of `one **bold**` joins the block below it.
+
+**A word delete is a word the READER can see.** `**bold**` is four characters
+to them and eight to the file, so counting in the source took the delimiters
+for letters and stopped mid-run. `⌃`/`⌥` + `⌫`/`⌦` measures the boundary on the
+visible projection — skip whitespace, then take the run of word characters (or
+of punctuation, if that is what is there) — and then performs that many
+*single* steps. Reusing one step at a time is the point: an emptied run drops
+its delimiters by exactly the rule one keystroke already follows, so a word
+delete cannot leave half a pair behind. When nothing of the reader's is left on
+that side it falls through to the single-key branches, which own merging with
+the neighbouring block.
+
+**Whitespace never gets trapped against a delimiter.** Deleting the character
+at the edge of a run left `**bold **`, which CommonMark does not read as
+emphasis — the run broke and its asterisks appeared. The whitespace belongs
+outside the run, so it is moved across the delimiter: the reader's words stay
+in the same order and the run is whole again. Only the delimiter the deletion
+actually touched is considered, and the swap is kept only if `markMap()` says
+it genuinely hides more, so it can never quietly turn someone's literal
+asterisks into emphasis.
+
+`AMD.markMap(text)` says which character positions are hidden delimiters and
+`AMD.backspaceAt(text, at)` applies the rule; both read the same `scan()` the
+renderer uses, so what counts as a marker can never drift from what is drawn.
+In **source view** the delimiters are visible — they are the reader's to
+delete, and this behaviour deliberately stands aside.
+
 ### 5.2 Copy = Markdown
 
 Copying any selection or the whole page yields **valid, unbroken Markdown**:
@@ -165,20 +313,250 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
 
 ### 5.3 Editing model
 
-- **Undo / redo** — `⌘Z` / `⌘⇧Z`, covering block operations (turn into, move,
-  delete, duplicate) as well as text.
-- **Multi-block selection** — lasso from the gutter beside the text, or `⌘A`
-  twice for the page. The lasso rectangle is anchored in **document** space and
+- **Saving** — a keystroke updates the model immediately and the store on a
+  debounce; `readBlock` is the only writer on that path. It compares the DOM
+  against what was last **saved**, never against the model, because `onInput`
+  has already written the model by then — comparing against it made the guard
+  permanently true, and typing alone never reached storage at all. The text
+  still arrived whenever some *other* edit (⏎, Tab, a menu, a checkbox) wrote
+  the page, which is why the loss stayed invisible: nearly every session
+  contains one. Type a sentence and close the tab, and it was gone.
+- **Undo / redo** — `⌘Z` / `⌘⇧Z` (and `⌘Y`), covering block operations (turn
+  into, move, delete, duplicate) as well as text.
+
+  **Both keys file whatever is still pending before they move.** Typing files
+  its history on a pause, so a character struck a moment ago is not in
+  the stack yet, and `applyHist` overwrites the page wholesale — anything
+  unfiled at that moment is simply gone. `undo()` always guarded against this;
+  `redo()` did not, and it destroyed that typing outright: undo a step, type,
+  press `⌘Y`, and what you typed had never existed. `syncTail()` is a no-op
+  when nothing has changed, so a redo with nothing pending walks forward
+  exactly as before; when something *has* changed it is filed, which takes the
+  forward stack with it — the same rule any new edit follows, and the reason a
+  new edit kills redo.
+
+  **The page title is filed like any other edit.** It sits in every snapshot,
+  but nothing ever filed one *for* it: `⌘Z` could not take a title back, and —
+  worse — undoing anything **else** landed on a snapshot carrying the old title
+  and wiped what had been typed since. The state as it stood *before* a run of
+  title keystrokes is filed once, the result on a pause, so a whole title is
+  one undo step and stopping then typing again gives two. On a database row
+  page the title also mirrors into the row's first cell; `patchDb` files
+  history on every call, which alone put one entry per **keystroke** in the
+  stack, so that write is told not to and the debounce owns the filing for both
+  kinds of page. (The mirrored cell itself is not in a row page's snapshot —
+  `dbsUsedBy()` only walks blocks, and a row page holds no database block.
+  Restoring it wholesale would be the whole-database hazard that delta restore
+  exists to remove, so it waits for that.)
+
+  **Neither key writes in a view the reader may not edit** — a version preview,
+  a page sitting in the Trash, a published page someone is only reading.
+  `_mutate` has always checked `isReadOnly()`; `applyHist` never did, so `⌘Z`
+  and `⌘Y` went straight past it into `setState` and edited the document
+  anyway. The check sits on the function that **writes**, so no future caller
+  can slip past it, and again on the two keys, so nothing is filed on the way
+  in and no toast claims an edit that never happened. Leaving the read-only
+  view restores both keys immediately.
+
+  **Every writer files the state it is about to leave behind.** `mutate` files
+  on *both* sides of a structural change, so such an edit always has a step
+  behind it. The writers that go through the DOM — typing, `⌫`/`⌦`, the code
+  block — cannot do that, since filing per keystroke would pack the stack with
+  single characters, so they file once the reader pauses. That left the run
+  itself with no "before": on a freshly opened page the stack was empty and the
+  first thing anyone typed could not be undone at all. `histMark()` files that
+  "before" exactly once per run — the pending timer is what says a run is
+  already under way — and `histLater()` files the result on the pause. The
+  timer carries the page it belongs to, so a run still pending when the reader
+  navigates away cannot file itself into whatever page is open when it fires.
+
+  **A database is restored by difference, not wholesale.** Undo means "go back
+  one step", not "make everything look the way it did then". For blocks the two
+  are the same thing, since a page's blocks are edited only from that page. A
+  database is not: the same one is edited from the page it sits on **and** from
+  inside every row opened as its own page, so putting the snapshot's copy back
+  silently threw away work done in the other place — set a property from inside
+  a row page, return to the host, press `⌘Z` on something unrelated, and the
+  property was gone with nothing to show it had happened.
+
+  So only what the *step* changed is applied: `from` is the database as it
+  stood at the step being left, `to` as it stood at the step being entered, and
+  any field where those two agree keeps whatever it holds now. Fields are
+  compared one level at a time — the database's own fields, then the row list,
+  then each row's cells — because a whole-object comparison would call the
+  entire database "changed" the moment one cell moved. Which rows exist and in
+  what order is one fact about the list, so it moves only if the step moved it;
+  surviving rows still merge cell by cell either way. Where a step changed the
+  same field that was also changed elsewhere, the step wins — it is the field
+  the reader is undoing.
+
+  **History belongs to the page the work was done on, and survives leaving it.**
+  There used to be one history object keyed by page id, so opening anything
+  else threw the previous page's away — and since opening a sub-page or a
+  database row *navigates*, the very act of making one destroyed the history of
+  the page it was made from. Each page keeps its own record now; the twelve
+  most recently visited are held and the least recently visited is dropped
+  first. Anything still on a debounce is filed on the way out, for the page it
+  was typed on, rather than lost.
+
+  Blocks and databases are stored as **separate strings**. A database is by far
+  the heavier of the two — on a 400-row table it is effectively the whole
+  snapshot — and it usually does not move while someone types, so an entry
+  whose databases match the one before it keeps that same string rather than a
+  second copy of the same characters. A budget across all pages bounds the lot:
+  whole pages go first, least recently visited first, then the oldest steps of
+  the page in hand. The byte count adds each entry's own strings, so a shared
+  database is counted more than once and the budget trims a little sooner than
+  it strictly must.
+
+  A run ends on a **pause or a length**, whichever comes first. The pause alone
+  was not enough: type a whole paragraph without stopping and the lot would be
+  one step, so a single `⌘Z` would take the paragraph. A run therefore also
+  ends after **80 keystrokes**, which is about a line of prose — a reasonable
+  amount to lose at once. Deletions count toward a run the same way, so holding
+  `⌫` through a paragraph does not become one step either.
+
+  The numbers sit together at the top of `part-tools.js`: **350 steps** a page,
+  **12 pages**, **24 MB** over all of them, an **1800 ms** pause and an
+  **80-keystroke** run cap. The pause is what decides how much a
+  single `⌘Z` takes back: a gap shorter than it continues the same step, so
+  deleting something a second after typing it undoes as one edit. The byte
+  budget is what makes 350 safe — 350 steps of a ten-block page is 0.4 MB and of
+  a 200-block page 8 MB, but of an 800-block page it would be 32 MB, so there
+  the budget trims first and the page settles around 330 steps.
+
+  **A page files only the database changes it made itself.** A passive
+  snapshot — taken when typing pauses, or on the way into `⌘Z` — that differs
+  *only* in its databases is recording someone else's work, and filing it would
+  put a step in this page's history that this page never took, so the next `⌘Z`
+  would undo a stranger's edit. Deliberate database edits all arrive through
+  `patchDb`, which says so; anything that adds or removes a database block
+  changes the blocks too. A database-only difference with no such claim is
+  therefore always foreign and stays out of the history — which also keeps rows
+  arriving from storage out of it.
+
+  **A sub-page moves in both of its places.** It lives twice over: a block on
+  the host page, and a page in the workspace. A snapshot carries only the
+  blocks, so undo put the block back and left its page in the Trash — a block
+  pointing at a trashed page — and, the other way, took the block away and left
+  the page behind, sitting in the sidebar with nothing pointing at it. Applying
+  a step now reconciles the two: a sub-page the step brings back comes out of
+  the Trash, one the step takes away goes into it. Only the sub-pages **this
+  step** moves are touched, so a page the reader trashed from the sidebar —
+  whose block is still on the host — is never resurrected by an unrelated undo.
+  Making a sub-page also files its own step at last: the block lands on the
+  *parent's* page while the call navigates to the child, so the state after the
+  insert is filed against the parent by name.
+
+  **A page's icon is part of the page**, so it travels in the snapshot and `⌘Z`
+  takes it back — set, changed and cleared alike, one step each. It is filed on
+  both sides the way a structural edit is, through `patchPageHist()`;
+  `patchPage` itself stays out of the history, since every mutation writes
+  blocks through it and the title files its own runs on a pause. (A page has no
+  *cover*: that field belongs to database **rows**, and rows travel inside the
+  database part of the snapshot already.)
+
+  **Both keys are in both menus.** Redo had two bindings and appeared in no
+  menu at all, and the phone sheet — the only route a phone has, since there is
+  no `⌘Z` to fall back on — offered neither Undo nor Redo. The page menu now
+  lists Redo beside Undo, and the sheet lists both, at the top where they are
+  reached most often.
+
+  **Both keys say what they can do.** Pressing one at the end of its stack used
+  to do nothing at all, with no way to tell that from a key that had not
+  registered, so it now answers "Nothing to undo" / "Nothing to redo" — and the
+  menus show it *before* the press, dimming and disabling the entry that would
+  do nothing. `canUndo()`/`canRedo()` decide both. Pending work counts for
+  undo, since a run still on its timer is filed by the key itself before it
+  steps; it does not count for redo, because filing pending work is exactly
+  what discards the forward stack, and in that case the key says so. A
+  read-only view stays silent, as §22 requires — there is nothing to explain
+  when the reader is not editing.
+
+  **An undo shows you what it changed.** A step whose effect is off screen
+  looks like a key that did nothing, so the block the step touches is brought
+  into view and flashed — `nearest`, so a block already on screen does not
+  jump. The target is found by flattening both block trees and signing each
+  block by *itself*: a change inside a toggle points at the child that changed
+  rather than at the toggle around it. A step that only *removes* leaves
+  nothing to point at, so the nearest block surviving on either side of the gap
+  is used, and a step that changes no block at all — an icon, a title — scrolls
+  nowhere. Where the target sits inside a **collapsed** toggle it renders
+  nothing, so the nearest drawn ancestor is used instead; expanding the toggle
+  would be an edit the reader did not ask for.
+- **Multi-block selection** — lasso from the gutter beside the text, `⌘A`
+  twice for the page, or `⇧↑/↓` out of a block.
+
+  A selection cannot simply *grow* out of its block: each block is its own
+  contenteditable element, two of those are two editing hosts, and no browser
+  selection spans them — `⇧↓` used to call `focus()` on the next block, which
+  collapses the selection, so the gesture threw away everything it had. It has
+  to change **kind** instead. Inside a block the browser owns it; at the true
+  end of the text `⇧↓` hands over to whole-block selection, which is the same
+  `blockSel` the lasso fills, so highlight, copy/cut as Markdown, delete and
+  replace-on-typing all already applied to it. The handover waits for the end
+  of the *text*, not merely the last visual line, so from mid-block the first
+  `⇧↓` still selects the rest of the block and only the next one crosses.
+  `_selAnchor` is the end that stays put and `_selHead` the end that moves, so
+  `⇧` back the other way shrinks the range rather than growing it the wrong
+  way; a pointer press clears both. Blocks that hold no caret — a divider, a
+  table — are *included* here, unlike in caret motion, because they are real
+  blocks to copy or delete. Escape drops the selection.
+
+  Nothing is focused in this mode, so the browser has no caret to keep on
+  screen and the page sat still while the selection ran off the bottom of it.
+  The moving end is scrolled into view on every step, by `nearest` — the least
+  movement that brings it in — so a selection growing inside the viewport does
+  not jerk the page around. The lasso rectangle is anchored in **document** space and
   auto-scrolls at the edges, so a selection keeps growing as you scroll through
   a long note. Copy/cut writes Markdown; typing replaces the selection; the drag handle moves
   the whole selection.
 - **Floating format bar** on any text selection: bold, italic, strike, code,
-  highlight, link, colour.
+  highlight, link, colour. With **nothing** selected, `⌘B`/`⌘I`/`⌘E`/`⌘U`/`⌘H`
+  take the word under the caret — the only reading of "bold this" available
+  when there is no selection, and what a word processor does. The word stops
+  at whitespace *and* at any delimiter, so `⌘B` inside `**bold**` offers
+  `bold` and the toggle strips the pair, rather than wrapping the asterisks
+  themselves. `⌘B` on an *italic* word gives `***word***`, which is bold and
+  italic together. With no word under the caret the key does nothing:
+  wrapping an empty range wrote `****`, four asterisks the reader can see,
+  since a run with nothing inside it is not emphasis and renders as the
+  literal characters it is.
 - **Triggers anywhere in a line** — `/` for blocks, `@` to link a page. Both
   remove the typed query when a command is chosen or Escape is pressed.
 - **Block motion** — `⌘⇧↑/↓` move, `⌘D` duplicate, `⌘⇧⌫` delete.
-- **Caret behaviour** — column memory on `↑/↓`, Backspace at the start merges
-  into the block above, Tab under a toggle nests the block into it.
+- **Caret behaviour** — Backspace at the start merges into the block above,
+  Tab under a toggle nests the block into it, and `↑/↓` carry a **goal
+  column**: the column the caret set out from is held for the whole run of
+  presses, so crossing a short line and carrying on lands back under where you
+  started. Any other key, or a pointer press, drops it — a click places the
+  caret deliberately, and holding the old column would yank the next `↓` back
+  to wherever the caret had been travelling before.
+
+  `←/→` **cross block boundaries** at the edges: at the very start of a block
+  `←` lands at the end of the one above, at the very end `→` lands at the
+  start of the one below. Each block is its own contenteditable element, and
+  to the browser two of those are two separate documents, so its caret motion
+  stops dead at the boundary and the only ways across were the mouse and
+  `↑/↓`. "The very end" means what the **reader** sees: typing `**bold**`
+  leaves the caret between the two closing asterisks — inside a `display:none`
+  span, with no rect of its own — and from there the browser could not move it
+  at all, so `→` did nothing for ever from a position one bold word reaches.
+  Everything between the caret and the end being a hidden delimiter is the
+  end, the same way `⌫` reads the other edge. Mid-text needs no help: the
+  browser steps over a whole marker run in one press. Held modifiers and `⇧`
+  are left alone — word jumps and selection belong to the browser.
+
+  `↑/↓` and `←/→` both **step over what cannot hold a caret**. A divider, a table, a
+  sub-page and a database have no editable element between them; asking for
+  exactly one neighbour and giving up when it was one of those made a divider
+  a wall, with everything beyond it unreachable by keyboard on a page that
+  opens with one. Two measurements make this work: a collapsed range has no
+  bounding box (Chromium answers with zeroes), so the "last visual line?" test
+  reads `getClientRects()`; and its tolerance comes from the caret's own
+  height rather than a flat 6px, which was less than the padding under a
+  single line and so answered no for every caret that was not already at the
+  end of the text.
 - **Drag & drop** — pointer-driven: a floating ghost, an insertion line that
   springs to the nearest gap, auto-scroll near the edges, and the dropped block
   adopts the target's list indent. A block can never be dropped inside itself.
@@ -776,6 +1154,19 @@ sections above, which are always current.
 
 | Date | Change |
 | --- | --- |
+| 2026-08-23 | **⌃/⌥ + ⌫ or ⌦ did not remove a word, and a delete could trap whitespace against a delimiter.** In a plain block the browser's own word delete worked; in a formatted one our delimiter-aware branch took the key and removed exactly ONE character, so the shortcut looked broken wherever there was formatting — and the ⌥ chord did nothing at all. The browser could not simply be left to it: it takes a `display:none` span away with the character beside it, and it counts delimiters as letters, so it stopped mid-run. A word is now measured on what the reader SEES and performed as that many single steps, so an emptied run drops its delimiters by the rule one keystroke already follows. Sweeping every offset then exposed an older fault in that single step: deleting the character at the edge of a run left `**bold **`, which is not emphasis by CommonMark, so the run broke and its asterisks appeared — a plain ⌫ had this too and no earlier sweep had used a run with a space in it. Whitespace is now moved across the delimiter rather than left inside, keeping the reader's words in the same order; only the delimiter the deletion touched is considered and the swap is kept only if `markMap()` says it hides more, so literal asterisks are never quietly turned into emphasis. `backspaceAt`, `deleteAt` and both word deletes now share one single-step primitive and one collapse rule, so they cannot disagree. Verified: word delete forwards and backwards over plain text, over runs, and emptying a run or a link label; ⌃⌫/⌃⌦ swept at every offset of three formatted lines and single ⌫/⌦ swept over a run containing a space, with no delimiter ever visible; the block-merge edges and the code block's native key intact. |
+| 2026-08-23 | **Two caret faults left over from the audit.** (1) **A markdown shortcut threw the caret to the end of the line.** `tryShortcut` always restored it at `rest.length`, which is right by accident on an empty line and wrong on one that already had text: typing `# ` in front of "Hello world" made the heading but put the caret at column 11, so everything typed next went to the back of the line the reader was standing at the front of. The caret now comes from where the reader actually was, minus the prefix that was removed. (2) **Typing at the visual start of a run came out formatted.** `Home` in `**bold** tail` cannot park a caret before the hidden `**`, so the browser slid it to offset 2 and the next character came back as `**Xbold**`. The relocation already knew the mirror case through `_want`; this edge needs no `_want` at all, because if everything before the insertion is invisible the reader was at column 0 by definition, and nothing sits to the left of column 0 for formatting to be inherited from. Verified: all six shortcuts keep column 0 and what follows is typed at the front; all five run types type plain at the visual start, by `Home` and by arrowing there; and typing inside a bold word still extends it. |
+| 2026-08-23 | **`snake_case_name` came out as `snakecasename`.** An underscore inside a word was read as emphasis, so the middle of an identifier turned italic and both underscores were *hidden* — a reader writing about `file_name.txt` or `do_this_now` watched their own text silently rewritten, and the missing characters were invisible rather than wrong-looking, which is worse. CommonMark forbids intraword `_` for exactly this reason; the scanner now does too, for `_`, `__` and `___` alike, emitting the whole run as ordinary text when a word character sits against either end. Asterisks are deliberately untouched — `a*b*c` is emphasis by that spec and everywhere it is implemented. `openRuns()` learned the same rule, because it had the mirror-image fault: ⏎ in the middle of `snake_case_name` closed a run that was never open and produced `snake_c_` above `_ase_name`, inserting underscores nobody typed. Verified: identifiers read back whole, typed key by key as well as loaded; `_really italic_` beside `my_var` still italicises only the former; `_lead_` and `__strong__` still mark; ⏎ inside an identifier adds nothing; ⌫ removes exactly one character at every offset of one; and `inline()` is still byte-identical on all 31 earlier cases. |
+| 2026-08-23 | **`***both***` showed its own asterisks.** Bold-italic is the one mark written with three delimiters, and the scanner had no rule for it: the `**` alternative matched `***both**`, took two delimiters off the front and two off the back, and left the third `*` at each end as ordinary text — so the reader typed `***both***` and got `*both*` set in bold, the syntax showing through in the middle of a sentence. Rather than reorder the alternation (every capture group in it would shift, and the group numbers are what the scanner reads), the `**` branch now recognises the case it is already sitting on: a match whose content opens with a *third* delimiter and which is followed by one more takes three from each end and emits a `strongem` segment, rendered `<strong><em>`. `___both___` goes the same way. `****x****`, `***a**b*` and `*** x ***` are deliberately left as they were — none of them is bold-italic. The whole point of one shared `scan()` holds: `markMap()` reads the same segments, so ⌫, ⌦, ⏎ and the arrows all learned the three-delimiter run for free. `⌘B` on an *italic* word is the reward — it produces `***word***`, which used to be a way to make asterisks appear on screen. Verified: bold-italic really paints at weight 700 and `font-style: italic`; ⌫ and ⌦ swept across every offset never expose an asterisk; ⏎ splits it into two bold-italic halves; `inline()` still byte-identical on all 31 earlier cases and every source round-trips. |
+| 2026-08-23 | **⏎ inside a link tore it in half and showed the reader its syntax.** `splitMarked()` closed and reopened every *delimiter pair* the cut fell inside, but a link is not a pair — it is `[`, a label, `](`, a url, `)` — so cutting `see [my link](http://x.y) end` left `see [my ` above and `link](http://x.y) end` below, raw syntax visible in both blocks and neither half a link any more. The split is now link-aware: the head closes the link with `](url)` and the tail reopens it with `[`, so both halves stay clickable, which is what Notion does. Cutting at either edge of the label keeps the link whole instead of producing an empty one, and cutting inside `](url)` — a position `snapOut()` already refuses to leave a caret in — moves past the link. Inside a live label the pair machinery is skipped entirely: `scan()` never parses emphasis inside a link, so a `**` written in a label is literal text and closing it would have inserted delimiters the reader never typed. Verified by splitting at *every* offset of five link-bearing lines, in the engine and again in the browser — no bracket or parenthesis ever reaches the reader, the visible text is always preserved exactly, both halves keep their href — plus ⏎ inside and after a bold run unchanged. |
+| 2026-08-23 | **`⌦` had the same quarrel with hidden delimiters that `⌫` did.** Chromium takes a `display:none` span away together with the character beside it on *either* side, so `⌦` over the `m` of `==mark==` removed the opening `==` too and left `ark==` showing as literal text. The earlier work fixed `⌫` and never covered `⌦`, which is the rarer key and so went unreported for longer. `AMD.deleteAt()` is `backspaceAt()` forwards: delete the next character the reader can SEE, and drop the pair when that empties the run. It hands the key back to the browser where a block holds nothing invisible, and where nothing but delimiters lies ahead it answers `atEnd` — visually the end of the block — so the existing merge-with-the-next-block rule runs there too, which also settles `⌦` at the visual end of a block doing nothing at all. The merge rule itself is untouched: a sub-page, database, code or differently-typed block is still selected rather than absorbed. Verified by sweeping `⌦` from every offset of five formatted strings — 53 positions, no delimiter ever visible — plus the merge cases either side of it, a plain block keeping the native key, and a code block staying literal. |
+| 2026-08-22 | **Three faults behind "weird editor behaviour", all measured rather than guessed.** (1) **Typing after a finished run went inside it.** A `display:none` span holds no caret position, so the offset parked after a run closes does not survive — the browser slides it to the last *visible* spot, inside the run. Tracing every keystroke of `**bold**` showed the caret reported as 7 of 8 the moment the run closed, already between its own closing asterisks: a following space produced `**bold* *` (a literal `*`, an italic run, another `*` — exactly the syntax reported appearing), and typing on produced `**bold more**` with the whole phrase bold. ⏎ split at the same invisible offset, tearing the pair into `**bold***` above `*…**`. Typing now never reads the caret back from the browser: an insertion of *n* characters at *p* puts it at *p + n*, remembered as `_want`, and if the next keystroke lands elsewhere with **only invisible characters between**, the two offsets are the same place on screen and the character is moved back to the intended side. Deliberate moves drop `_want`, so editing inside a bold word still extends it, and a caret navigated to the end of a run keeps typing bold as Word, Docs and Notion do — only the keystroke that *closes* a run leaves you outside. `AMD.snapOut()` does the same for structural operations, so ⏎ never splits a delimiter pair. (2) **A paragraph below a toggle went blank when the toggle collapsed.** `sc-for` keys rows by index, so a row leaving the middle of the list hands its editable element to the next block; `elRef` ignored React's detach, `_els` ended up pointing two ids at one element, and `syncDom` painted it twice with the last write winning. `elRef` now lets go on detach. This was content disappearing from the page while still in the file, and it was found while chasing the reported toggle complaint rather than reported directly. (3) **The gutter's ＋ on a toggle opened the line outside it.** The button sits beside the toggle's title, so the line it opens now appears under that title, inside an open toggle; a closed toggle shows no inside, so there it stays a sibling. Verified: ten source strings typed key by key come back byte-identical with no delimiter ever visible; typing inside a bold word still extends it; ⏎ after and inside a run both split correctly; the paragraph below a collapsing toggle stays on screen; the ＋ line collapses with the toggle; and all seven earlier suites re-run clean. |
+| 2026-08-22 | **The delimiter-aware `⌫` was only half a fix, and a block selection dragged the page nowhere.** (1) **Formatting still broke on `⌫`, and the earlier fix is why it was hard to see.** That fix took the key only when the character in front of the caret was itself a hidden delimiter, and handed every "ordinary" character back to the browser as an optimisation. But Chromium deletes a `display:none` span *together with* the character beside it: `⌫` over the `m` of `==mark==` removed the opening `==` as well, leaving `ark==` — and the surviving half showed as literal text, which is exactly the syntax the reporter saw appear. Found by sweeping `⌫` from every caret offset in a formatted block rather than testing the ends: the ends were all correct, and offsets 3, 7, 10 and 13 were the broken ones — every position sitting against a hidden span. So where a block holds anything invisible at all, `⌫` is now ours for every press; a block with no delimiters keeps the native key, which is where the optimisation actually belongs. (2) **The page did not follow a growing block selection.** Nothing is focused in that mode, so there is no caret for the browser to keep on screen and the selection simply ran off the bottom of a still page. The moving end is now scrolled in on every step with `nearest`, the least movement that brings it into view, so a selection growing inside the viewport does not jerk the page around. Verified: the offset sweep is clean at every position of `==mark==` and `see ==mark== here`; 23 `backspaceAt` cases; and in the browser, the selection starts without moving the page, scrolls down as it grows past the bottom and back up as it shrinks past the top, with the moving end on screen throughout. |
+| 2026-08-22 | **`⇧`+arrow could not select past the end of a block — and destroyed the selection trying.** The vertical-arrow branch never checked for `⇧`, so holding it while crossing to the next block called `focus()` on that block, which collapses the selection: `⇧↓` from mid-block wiped whatever was selected and dropped the caret below it with nothing selected at all. (Reachable before on the second press; the edge-detection fix earlier the same day made the crossing fire on the first, so it began to bite immediately.) The underlying constraint is not patchable: each block is its own contenteditable element, two of those are two editing hosts, and no browser selection can span them — a selection that needs to leave its block cannot grow, it has to change **kind**. So inside a block the browser keeps it, and at the true end of the text `⇧↑/↓` hands over to the whole-block selection the app already had for the gutter lasso and `⌘A`-twice: `blockSel` already drew the highlight and already backed copy/cut-as-Markdown, delete and replace-on-typing, so the work was wiring rather than building. The handover waits for the end of the *text* rather than the last visual line, so from mid-block the first `⇧↓` still selects the rest of the block and only the next crosses; `_selAnchor`/`_selHead` make `⇧` the other way shrink the range instead of growing it the wrong way, and a pointer press clears both. Blocks that hold no caret (a divider, a table) are included here, unlike in caret motion, since they are real blocks to copy or delete. One trap worth recording: React listens on the root container, so the same keypress went on to reach the window handler that grows an existing selection, and the range jumped two rows on the press that created it — the handover stops propagation. Verified: the first `⇧↓` extends text inside the block, the second selects two whole blocks (highlighted, DOM selection empty, nothing focused), further presses grow and `⇧↑` shrinks; Delete removes exactly the selected blocks, typing replaces them, Escape clears, `⇧↑` at the top of the page does nothing, and a divider is included rather than skipped. |
+| 2026-08-22 | **`←/→` could not leave a block, and one caret position could not be left at all.** Each block is its own contenteditable element, and to the browser two of those are two separate documents: caret motion stopped dead at the boundary, so `←` at the very start of a block and `→` at its very end simply did nothing, and the only ways between blocks were the mouse and `↑/↓`. They now step into the neighbour — over anything that holds no caret (a divider, table, sub-page or database), the same skip the vertical keys use. The sharper half of this was found by measuring where the caret actually sits after typing: `**bold**` leaves it *between the two closing asterisks*, inside a `display:none` span with no client rect, and from there the browser cannot move it in either direction — `→` did nothing, for ever, from a position that typing one bold word reaches. So the edge test reads the reader's view rather than the string's: everything between the caret and the end being a hidden delimiter *is* the end, exactly as `⌫` already treats the other edge. Mid-text needed no help — Chromium steps over a whole marker run in a single press, which is why this only ever bit at the edges. `⇧` and held modifiers are untouched, since selection and word jumps belong to the browser. Verified: `←` and `→` cross in both directions, step over a divider, do nothing at the first block, leave mid-text motion and `⇧→` alone, and escape a caret parked between closing delimiters — with the earlier suites re-run clean. |
+| 2026-08-22 | **Two editor keys that misbehaved, both measured in a browser before and after.** (1) **`⌘B` with nothing selected wrote `****`.** Wrapping an empty range produces a run with nothing inside it, which is not emphasis and renders as the four literal asterisks the reader then sees — and they stay there if the user clicks away. It now takes the word under the caret, which is what a word processor does and the only reading of "bold this" available with no selection. The word stops at whitespace *and* at any delimiter (read from the same `markMap()` the Backspace rule uses), so `⌘B` inside `**bold**` offers `bold` and the existing toggle strips the pair, instead of swallowing the asterisks into `***bold***`; with no word under the caret — a blank block, or whitespace — the key does nothing at all. (2) **A divider was a wall for `↑/↓`.** The caret could not get past one in either direction, so on a page that opens with a divider everything beyond it was unreachable by keyboard. Three faults, all in the same nine lines: it asked for exactly one neighbour and gave up when that neighbour had no editable element (a divider, table, sub-page or database), so it now steps over them to the next block that can hold a caret; the "is the caret on the last visual line?" test called `getBoundingClientRect()` on a **collapsed** range, which Chromium answers with zeroes, so it was measuring against a rect at the top of the document; and its tolerance was a flat 6px, which is less than the 7px of padding and half-leading under a single line, so it answered no for every caret not already at the end of the text — the first `↓` from mid-line did nothing but park the caret at the end of the line, and it took a second press to leave the block. Both now read `getClientRects()` and scale the tolerance to the caret's own height. The goal column that survives the crossing was already there and is now held honestly: it is dropped on a pointer press, which used to leave a stale column that yanked the next `↓` back to wherever the caret had been travelling before the click. Verified: ⌘B bolds and unbolds the word under the caret, does nothing on a blank block or on whitespace, and a real selection still wraps exactly what was selected; ↓ crosses a divider on the first press, ↑ crosses back, the column set out from is recovered within 6px after passing through a shorter line, and a click resets it. |
+| 2026-08-22 | **Two data-loss bugs in the editor, found by auditing the save and block-structure paths and reproduced in a browser before either was touched.** (1) **Typing alone never reached storage.** `readBlock` — the debounced writer behind every keystroke — guarded on `f.block.text === text`, which reads correctly and never once fired: `onInput` writes the model on the way past so the caret never waits on a render, so by the time the guard ran the two were always equal and `persist()` was skipped every time. The text still got saved whenever some *other* edit (⏎, Tab, a menu, a checkbox) wrote the page, which is exactly why this survived so long — nearly every session contains one. Type a sentence, close the tab, and it was gone. The guard now compares against what was last *saved*, tracked per element: the model is not evidence of anything there, since `readBlock` is the code that puts the text into it. (2) **A toggle that stopped being one lost its contents.** Only a toggle has an inside — nothing walks `children` for any other type — so *Turn into → Text*, a markdown shortcut typed in a toggle's title, and ⌫ at its start each took the toggle's children off the page and out of the markdown export while leaving them whole and unreachable in the file. Three doors, one rule, so it went into `repair()` (which every mutation already passes through) rather than into each: a non-toggle carrying `children` has them lifted into the list right after it, and the blank child `repair()` itself guarantees is dropped rather than lifted so an empty toggle leaves no litter. Verified: typed text lands in storage with no other edit and survives a reload, code blocks included; all three doors now keep the child on screen and in the export; and the surrounding behaviour still holds — a live toggle keeps its children, collapse hides them and expand returns them, an empty toggle leaves no stray paragraph, and ⌘Z restores the toggle. The heading-toggle and Backspace suites re-run clean, with no console errors. |
+| 2026-08-17 | **Heading toggles, and a ⌫ that can see the hidden markers.** (1) **Toggles came in one size.** A toggle can now title a section at heading 1, 2 or 3, matching the plain heading of that level in type, gutter offset and reader styling, with the arrow scaled to suit. It is a `toggle` with a `level`, not a fourth block type — `repair()`, the three ⏎ exits, Tab-to-nest, `flat()`, drag and the markdown writer all key off `type === 'toggle'` and needed no change; the menus name the levels through the pseudo-types `toggle1`…`toggle3`, unpacked by `blockSpec()` at `setBlockType()`, the one place a type is written (and the one place that *clears* a stale level, or a toggle turned into a paragraph and back would return as a heading). Inside a toggle the markdown hashes now set the toggle's own level instead of converting the block — the old path made a plain heading and left the toggle's children unreachable — and any level swaps to any other, while four or more hashes mean no heading and so do nothing at all. (2) **⌫ at the end of any inline run destroyed its formatting.** §5.1 keeps the markdown source in the DOM with the delimiters hidden, so at the end of `**bold**` the caret sits behind two invisible asterisks: one keystroke ate a delimiter and `bold` came back as a raw `**bold*`. ⌫ now deletes the last *visible* character, and when the run runs out of them it drops the delimiters too, so the text falls back to plain instead of leaving `****`. The mirror case is the same map: when only delimiters separate the caret from column 0, the caret visually *is* at the start, so the block-level ⌫ runs there rather than eating the opening marker. `markMap()`/`backspaceAt()` read the same `scan()` the renderer does — one pass, two consumers — so what counts as a marker can never drift from what is drawn, and source view (where the delimiters are visible) is deliberately left alone. Verified: `inline()` byte-identical to its predecessor across 31 inputs with the source round-tripping; 20 `backspaceAt` cases; and in the browser, all six inline marks deleting down to clean plain text, the three levels swapping in both directions, four hashes inert, collapse/⏎-into-child/markdown-export/source-view/⌘Z all intact, zero console errors. |
 | 2026-08-16 | **Demo banner's exit button was a 26px tap target on phones** — below the project's own 44px floor, and it is the *only* way back from a state the banner exists precisely because users would read it as data loss. The message and a 44px button cannot share one 41px row, so on mobile the bar stacks: message on top, full-width 44px button beneath (89px tall). Desktop keeps the single 41px row. Verified at a true 375px width: button 44×351 fully inside the bar, nothing overflowing. |
 | 2026-08-16 | **Demo mode is now announced, not silent.** Booting the demo replaces the whole workspace with seeded pages; with nothing on screen saying so, that is indistinguishable from having lost every note. A slim bar at the top of the app now states it and offers "Back to my notes" (`AStore.leaveDemo()`), instead of leaving the exit buried in settings. Added `--warn-bg` / `--warn-fg` / `--warn-bd` in both themes, following the existing `--add-*` / `--del-*` convention rather than overloading another token. Verified in both themes; the banner is absent in normal Firebase mode. |
 | 2026-08-16 | **Two editor traps fixed.** (1) **A toggle had no keyboard exit.** ⏎ on its title focused `children[0]`, so a toggle with nothing inside consumed the key and did nothing at all, and once inside ⏎ only ever made more children — no keystroke climbed out. Added three exits: ⏎ on a blank toggle turns it back into a paragraph; ⏎ on a titled toggle opens/creates its first child and puts the caret there; ⏎ on an empty last child climbs out to just after the toggle. "Blank" had to mean *nothing written inside* rather than *no children*, since `repair()` keeps one blank child on every toggle and a length test would have made that exit dead code. `locate()` now returns the containing `parent`, which is what makes climbing out possible. (2) **The slash menu never scrolled to its selection.** The popup is 320px over ~890px of items, and moving the highlight never moved the scroll — so past the sixth item the selection walked out of sight and the arrow keys looked broken. It read worst on the wrap from last back to first, which looked like the selection sticking at the bottom: it *had* returned to the top, 570px above the visible rows. Fixed by adjusting `scrollTop` by the smallest amount that brings the row in (not `scrollIntoView`, which would drag the editor behind it); the first row scrolls fully to top so the section title is not clipped. Also clamped the selection index against the *current* result count — typing narrowed the list under a stale index, leaving nothing highlighted while ⏎ still inserted the clamped last item, so the menu disagreed with itself about what was selected. Verified: all 18 rows stay visible walking down and up, both wraps land correctly, stale index 15 over 1 result highlights row 0 and ⏎ inserts exactly that; all three toggle exits confirmed; zero console errors. |

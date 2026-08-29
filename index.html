@@ -646,11 +646,12 @@ button:active{transform:scale(.985);opacity:.85}
                   </div>
                 </sc-if>
                 <sc-if value="{{ r.isToggle }}" hint-placeholder-val="{{ false }}">
-                  <div style="display:flex;align-items:flex-start;gap:4px">
-                    <button onClick="{{ r.collapse }}" style="width:20px;height:26px;flex:none;display:grid;place-items:center;color:var(--muted);transform:rotate({{ r.rot }});transition:transform .16s cubic-bezier(.22,.8,.3,1)">
+                  <div style="display:flex;align-items:flex-start;gap:4px;margin-top:{{ r.tgTop }}">
+                    <button onClick="{{ r.collapse }}" style="width:20px;height:{{ r.tgMinH }};flex:none;display:grid;place-items:center;color:var(--muted);transform:rotate({{ r.rot }}) scale({{ r.tgScale }});transition:transform .16s cubic-bezier(.22,.8,.3,1)">
                       <svg width="11" height="11" viewBox="0 0 10 10" fill="currentColor"><path d="M3 1.2 7.6 5 3 8.8z"></path></svg>
                     </button>
-                    <div contentEditable="{{ editable }}" suppressContentEditableWarning="{{ true }}" ref="{{ r.ref }}" onInput="{{ r.input }}" onKeyDown="{{ r.key }}" onFocus="{{ r.focus }}" onBlur="{{ r.blur }}" onPaste="{{ r.paste }}" data-ph="Toggle" style="flex:1;min-width:0;padding:3px 2px;white-space:pre-wrap;line-height:1.5;font-size:16px;min-height:26px"></div>
+                    <sc-if value="{{ r.tgSource }}" hint-placeholder-val="{{ false }}"><span style="flex:none;padding-top:3px;color:var(--mk);font-family:var(--mono);font-size:13px;user-select:none">{{ r.tgMarks }}</span></sc-if>
+                    <div contentEditable="{{ editable }}" suppressContentEditableWarning="{{ true }}" ref="{{ r.ref }}" onInput="{{ r.input }}" onKeyDown="{{ r.key }}" onFocus="{{ r.focus }}" onBlur="{{ r.blur }}" onPaste="{{ r.paste }}" data-ph="{{ r.tgPh }}" style="flex:1;min-width:0;padding:3px 2px;white-space:pre-wrap;font-size:{{ r.tgSize }};font-weight:{{ r.tgWeight }};letter-spacing:{{ r.tgSpace }};line-height:{{ r.tgLine }};min-height:{{ r.tgMinH }}"></div>
                   </div>
                 </sc-if>
                 <sc-if value="{{ r.isCode }}" hint-placeholder-val="{{ false }}">
@@ -1281,7 +1282,7 @@ button:active{transform:scale(.985);opacity:.85}
       </div>
     </sc-if>
     <sc-if value="{{ m.isItem }}" hint-placeholder-val="{{ true }}">
-      <button onClick="{{ m.run }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:6px 9px;border-radius:3px;text-align:left;font-size:14px;color:{{ m.color }}" style-hover="background:var(--hover)">
+      <button onClick="{{ m.run }}" disabled="{{ m.off }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:6px 9px;border-radius:3px;text-align:left;font-size:14px;color:{{ m.color }}" style-hover="background:var(--hover)">
         <span style="width:17px;flex:none;text-align:center;font-size:13px">{{ m.glyph }}</span>
         <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ m.label }}</span>
         <span style="flex:none;font-size:11px;color:var(--faint)">{{ m.hint }}</span>
@@ -1805,7 +1806,7 @@ button:active{transform:scale(.985);opacity:.85}
     <sc-if value="{{ sheetIsMore }}" hint-placeholder-val="{{ false }}">
     <div style="flex:1;overflow-y:auto;padding:0 12px 20px">
       <sc-for list="{{ moreItems }}" as="m" hint-placeholder-count="7">
-        <button onClick="{{ m.run }}" style="width:100%;display:flex;align-items:center;gap:13px;padding:14px 12px;border-radius:6px;text-align:left;font-size:15.5px;color:{{ m.color }}">
+        <button onClick="{{ m.run }}" disabled="{{ m.off }}" style="width:100%;display:flex;align-items:center;gap:13px;padding:14px 12px;border-radius:6px;text-align:left;font-size:15.5px;color:{{ m.color }}">
           <span style="width:24px;text-align:center;font-size:16px">{{ m.glyph }}</span>
           <span style="flex:1">{{ m.label }}</span>
           <span style="font-size:12.5px;color:var(--faint)">{{ m.hint }}</span>
@@ -1875,6 +1876,15 @@ class Component extends DCLogic {
         e.preventDefault(); e.shiftKey ? this.redo() : this.undo(); return;
       }
       if ((e.metaKey || e.ctrlKey) && k === 'y' && this.state.route === 'app') { e.preventDefault(); this.redo(); return; }
+      /* Once a selection has crossed into whole-block mode nothing is
+         focused, so the block's own key handler is out of the picture and
+         growing the range is this listener's job. */
+      if (sel.length && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey &&
+          (e.key === 'ArrowUp' || e.key === 'ArrowDown') && this.state.route === 'app') {
+        e.preventDefault();
+        this.growBlockSel(e.key === 'ArrowUp' ? -1 : 1);
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && k === 'x' && sel.length > 1) {
         const blocks = sel.map(id => { const f = this.locate(id); return f && f.block; }).filter(Boolean);
         navigator.clipboard.writeText(AMD.toMarkdown(blocks, { pages: this.state.pages, dbs: this.state.dbs }));
@@ -1931,6 +1941,9 @@ class Component extends DCLogic {
     this._onDown = (e) => {
       if (this.state.menu && !e.target.closest('[data-menu]')) this.setState({ menu: null });
       if ((this.state.blockSel || []).length && !e.target.closest('[data-block]')) this.setState({ blockSel: [] });
+      /* a press starts a new selection wherever it lands: the old anchor and
+         moving end describe a range that no longer exists */
+      this._selAnchor = null; this._selHead = null;
     };
     window.addEventListener('mousedown', this._onDown);
     this._onUp = () => { this._anchor = null; };
