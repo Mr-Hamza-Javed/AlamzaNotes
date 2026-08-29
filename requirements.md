@@ -934,6 +934,32 @@ Table, Board (grouped by a select property)**. View switcher tabs + `+ New`.
 Property types: text, select, multi-select, date, checkbox, person, number.
 Filter and sort controls per view. Rows open as pages.
 
+**Cells are edited in the table, not only on the row page.** A checkbox toggles
+on click; a select, status, multi-select or person cell opens its option picker
+over itself (a multi-select's stays open so several can be picked, and a name
+typed into it becomes a new option); everything else becomes an input. `Enter`
+commits, `Escape` abandons, `Tab` moves to the next cell that can be typed
+into — skipping the pickers and checkboxes, which are click targets, and
+wrapping to the next row. The automatic types stay read-only, because they are
+facts rather than fields. Pressing on a cell still starts a row drag, so only a
+press that never moved opens an editor.
+
+**Filtering understands every property, and the conditions read the way they
+look.** Within one property they are OR'd — two chips of the same select mean
+"either" — and across properties they are AND'd. Values are compared by TYPE,
+so an untouched checkbox counts as unchecked. Beyond equality: *contains* for
+text, `= > <` for numbers, *before* / *after* for dates, and *is empty* /
+*is not empty* everywhere. A filter naming a property that no longer exists is
+inert rather than fatal.
+
+**Sorting is stable, type-aware and multi-key.** Blanks sink to the bottom in
+both directions; text compares case- and accent-insensitively with numeric
+runs in order (`9` before `10`); a select or status sorts in the order its
+options are listed rather than alphabetically. Clicking a second property adds
+a tie-breaker rather than replacing the first. A sorted view cannot be
+drag-reordered — the view renders its own order, so the drag would be
+discarded — and says so rather than appearing to do nothing.
+
 ### 7.1 Properties — the full Notion model
 
 **Shape.** `prop = { id, name, type, options[] }`, where an option is
@@ -956,9 +982,27 @@ property is always first and can never be retyped or deleted.
    an inline option list: colour swatch (opens the ten-colour picker), editable
    name pill, reorder arrows, delete, and a "type a name, press Enter" row.
 
-**Retyping keeps data usable** — converting to select/multi-select/status seeds
-the option list from the values already present; single ⇄ multi converts
-scalar ⇄ array; number coerces.
+**Person is an option type**, like select — it carries a named, coloured,
+reorderable list. It was left out of that set, which made it the one type the
+reader could create but never fill in: the editor only offers an option list
+for the option types, so the property had no way to gain a name while the row
+page still drew it as an (empty) picker. A new Person property is seeded with
+the people the workspace already knows.
+
+**The four automatic types carry real data.** `createdAt` / `createdBy` are
+written once when a row is made; `updatedAt` / `editedBy` follow every edit.
+The stamping lives in `patchDb` — the funnel every deliberate table edit goes
+through — rather than at each call site, which is how it came to be missing
+everywhere at once. A row is stamped only if the mutation actually changed it,
+so reordering rows moves no timestamps. Authorship is never guessed from
+whoever happens to be reading: unknown reads as "—".
+
+**Retyping keeps data usable** — converting to an option type seeds the list
+from the values already present; single ⇄ multi converts scalar ⇄ array;
+number coerces. Shape is converted before type, not in the same if/else chain:
+sharing one chain meant an array took the "collapse to the first value" branch
+and never reached the number branch, so multi-select → number left every cell a
+string that then sorted lexicographically.
 
 **Visibility is per view *and* per page.** A view hides properties through its
 own `hidden[]`; the page hides them through `pageHidden[]`. Both are reachable
@@ -996,8 +1040,22 @@ committed drop is the index the indicator was showing, and Escape cancels.
   delete it. The default view is starred and is the one that opens.
 - **Database settings** carry **Start with properties collapsed**, so new row
   pages open folded (the default) without folding each one by hand.
-- **Filter** is grouped by property with real colour chips, and understands
-  checkbox properties. **Sort** offers Manual plus per-property asc/desc.
+- **Filter** is grouped by property with real colour chips for the option
+  types, and an operator + value row for everything else. **Sort** offers
+  Manual plus per-property asc/desc, and stacks keys in the order they were
+  picked.
+- **A board column is identified by its VALUE, not its caption.** The empty
+  column used to be recognised by parsing "No " off the front of its label,
+  which a property genuinely named "No Status" would have broken. Every column
+  also carries a ＋ that adds a card already belonging to it, rather than one
+  that lands in "No …" and has to be dragged out.
+- **Nothing disappears from a board.** Grouping resolves against all of the
+  table's properties, not just the visible ones, so hiding the group-by column
+  no longer makes the board and the drop handler disagree about which property
+  they are writing. A value that is set but is not one of the options gets a
+  column of its own — it used to match no column at all and simply not be
+  drawn. A multi-select board groups by membership, and dropping a card moves
+  the one tag rather than replacing the whole list.
 - **Duplicating** a page that holds a database clones the database whole: new
   database id, new view ids, new row ids, and every row page that had been
   opened is cloned and re-pointed — two fully independent copies.

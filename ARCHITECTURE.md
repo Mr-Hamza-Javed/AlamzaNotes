@@ -46,10 +46,10 @@ template itself.
 | `lib/part-pages.js` | 389 | Moving between pages, and the page tree |
 | `lib/part-versions.js` | 373 | Snapshots, diff and restore |
 | `lib/part-blocks.js` | 278 | Block structure |
-| `lib/part-database.js` | 653 | Tables |
-| `lib/part-drag.js` | 335 | Dragging |
+| `lib/part-database.js` | 1155 | Tables |
+| `lib/part-drag.js` | 368 | Dragging |
 | `lib/part-tools.js` | 1178 | Everything else the page needs |
-| `lib/part-menus.js` | 1309 | What menus, modals and sheets contain |
+| `lib/part-menus.js` | 1430 | What menus, modals and sheets contain |
 | `lib/part-render.js` | 705 | What the template receives |
 | `index.dc.html` | 2114 | template + state, lifecycle, persist |
 
@@ -67,7 +67,7 @@ Grep this instead of the codebase.
 
 **`lib/part-blocks.js`** — `moveBlock`, `startDrag`, `turnInto`, `duplicateBlock`, `insertOfType`, `slashKey`, `slashCatalog`, `mentionCatalog`
 
-**`lib/part-database.js`** — `chipColor`, `cellText`, `dbRowVals`, `openRowPage`, `collectDatabases`, `dbReferenced`, `dropDatabases`, `deleteDatabase`, `cleanUnusedTables`, `deleteRow`, `propFields`, `normProp`, `normDb`, `optOf`, `optStyle`, `addProp`, `renameProp`, `retypeProp`, `deleteProp`, `duplicateProp`, `moveProp`, `addOption`, `renameOption`, `recolorOption`, `deleteOption`, `moveOption`, `isHiddenInView`, `toggleViewProp`, `togglePageProp`, `toggleProp`, `moveRow`, `flipRows`, `dbBleed`, `applyRowDrop`, `setRowGroup`
+**`lib/part-database.js`** — `chipColor`, `cellText`, `cellRaw`, `isBlank`, `dateNum`, `isDateType`, `stampRows`, `boardGroupProp`, `groupVals`, `boardGroups`, `filterOps`, `matchFilter`, `applyFilters`, `cmpCells`, `sortRows`, `dbRowVals`, `typableProp`, `stepCell`, `openRowPage`, `collectDatabases`, `dbReferenced`, `dropDatabases`, `deleteDatabase`, `cleanUnusedTables`, `addRow`, `deleteRow`, `setCell`, `coerceCell`, `toggleOption`, `knownPeople`, `propFields`, `normProp`, `normDb`, `optOf`, `optStyle`, `addProp`, `renameProp`, `retypeProp`, `deleteProp`, `duplicateProp`, `moveProp`, `addOption`, `renameOption`, `recolorOption`, `deleteOption`, `moveOption`, `isHiddenInView`, `toggleViewProp`, `togglePageProp`, `toggleProp`, `moveRow`, `flipRows`, `dbBleed`, `applyRowDrop`, `setRowGroup`
 
 **`lib/part-drag.js`** — `rowGrab`, `patchDb`
 
