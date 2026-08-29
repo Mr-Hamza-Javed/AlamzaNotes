@@ -41,23 +41,23 @@ template itself.
 
 | File | Lines | What it owns |
 | --- | ---: | --- |
-| `lib/part-data.js` | 269 | Reading and writing state safely |
-| `lib/part-editor.js` | 655 | The typing surface |
-| `lib/part-pages.js` | 273 | Moving between pages, and the page tree |
-| `lib/part-versions.js` | 374 | Snapshots, diff and restore |
-| `lib/part-blocks.js` | 250 | Block structure |
-| `lib/part-database.js` | 521 | Tables |
-| `lib/part-drag.js` | 333 | Dragging |
-| `lib/part-tools.js` | 810 | Everything else the page needs |
-| `lib/part-menus.js` | 1250 | What menus, modals and sheets contain |
-| `lib/part-render.js` | 595 | What the template receives |
+| `lib/part-data.js` | 333 | Reading and writing state safely |
+| `lib/part-editor.js` | 1081 | The typing surface |
+| `lib/part-pages.js` | 389 | Moving between pages, and the page tree |
+| `lib/part-versions.js` | 373 | Snapshots, diff and restore |
+| `lib/part-blocks.js` | 278 | Block structure |
+| `lib/part-database.js` | 653 | Tables |
+| `lib/part-drag.js` | 335 | Dragging |
+| `lib/part-tools.js` | 1178 | Everything else the page needs |
+| `lib/part-menus.js` | 1309 | What menus, modals and sheets contain |
+| `lib/part-render.js` | 705 | What the template receives |
 | `index.dc.html` | 2114 | template + state, lifecycle, persist |
 
 ## Method index
 
 Grep this instead of the codebase.
 
-**`lib/part-data.js`** — `page`, `resolvePageId`, `dbFor`, `activeBlocks`, `bodyReady`, `ensureBody`, `ensureBodies`, `needParent`, `digestMap`, `digestFor`, `rowsReady`, `ensureRows`, `dbIdsIn`, `ensureRowsFor`, `myRole`, `canEdit`, `canComment`, `isReadOnly`, `patchPage`, `setBlocks`, `locate`, `miniRow`, `mutate`, `_mutate`
+**`lib/part-data.js`** — `page`, `resolvePageId`, `dbFor`, `activeBlocks`, `bodyReady`, `ensureBody`, `ensureBodies`, `needParent`, `digestMap`, `digestFor`, `rowsReady`, `ensureRows`, `repairRowPages`, `repairAllRowPages`, `dbIdsIn`, `ensureRowsFor`, `myRole`, `canEdit`, `canComment`, `isReadOnly`, `patchPage`, `setBlocks`, `locate`, `miniRow`, `mutate`, `_mutate`
 
 **`lib/part-editor.js`** — `nearView`, `syncDom`, `blockHtml`, `elRef`, `mathRef`, `gutRef`, `paintGutter`, `afterEdit`, `highlightNow`, `codeEdit`, `setCodeText`, `readBlock`, `editText`, `selectBlockRange`, `growBlockSel`, `onInput`, `caretRect`, `clearTrigger`, `insertMention`, `tryShortcut`, `insertAfter`, `removeBlock`, `onKey`, `wrapSel`, `onPaste`, `onFocus`, `onBlur`
 
@@ -67,7 +67,7 @@ Grep this instead of the codebase.
 
 **`lib/part-blocks.js`** — `moveBlock`, `startDrag`, `turnInto`, `duplicateBlock`, `insertOfType`, `slashKey`, `slashCatalog`, `mentionCatalog`
 
-**`lib/part-database.js`** — `chipColor`, `cellText`, `dbRowVals`, `openRowPage`, `propFields`, `normProp`, `normDb`, `optOf`, `optStyle`, `addProp`, `renameProp`, `retypeProp`, `deleteProp`, `duplicateProp`, `moveProp`, `addOption`, `renameOption`, `recolorOption`, `deleteOption`, `moveOption`, `isHiddenInView`, `toggleViewProp`, `togglePageProp`, `toggleProp`, `moveRow`, `flipRows`, `dbBleed`, `applyRowDrop`, `setRowGroup`
+**`lib/part-database.js`** — `chipColor`, `cellText`, `dbRowVals`, `openRowPage`, `collectDatabases`, `dbReferenced`, `dropDatabases`, `deleteDatabase`, `cleanUnusedTables`, `deleteRow`, `propFields`, `normProp`, `normDb`, `optOf`, `optStyle`, `addProp`, `renameProp`, `retypeProp`, `deleteProp`, `duplicateProp`, `moveProp`, `addOption`, `renameOption`, `recolorOption`, `deleteOption`, `moveOption`, `isHiddenInView`, `toggleViewProp`, `togglePageProp`, `toggleProp`, `moveRow`, `flipRows`, `dbBleed`, `applyRowDrop`, `setRowGroup`
 
 **`lib/part-drag.js`** — `rowGrab`, `patchDb`
 

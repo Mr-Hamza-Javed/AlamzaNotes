@@ -672,6 +672,29 @@ drops its row cache and reloads on next view. Row *order* lives in `dbmeta.o`
 as an array of ids, so a drag-reorder is one small write and the rows
 themselves never move.
 
+**A deleted row needs a tombstone, not an inference.** Deletions used to be
+inferred from `sent.dbrow` — the rows this session had itself uploaded — so
+deleting a row that had not been edited since the page loaded left its node on
+the server. `dbmeta.o` lost the id, but `fromDbMeta()` deliberately re-appends
+any row present in the node and missing from the order (that is what protects
+the manual order during migration), so the row reappeared at the bottom of the
+table on the next cold load. `putRows()` is the moment a deletion is observable
+— it holds both the previous row list and the new one — so it records the
+missing ids, and `push()` nulls those paths whether or not the row was ever
+sent. A row that comes back before the push, from an undo, clears its own
+tombstone; a push that fails keeps it for the next one.
+
+**Deleting a whole table is the one operation `push()` cannot express.** Its
+deletion path only nulls ids present in `sent.dbmeta`, and that map is empty
+after any reload, so an unreferenced table survived forever — and `dbmeta` is
+subscribed, so it was re-downloaded on every boot. `AStore.purgeDatabases()`
+removes the whole subtree, and three things call it: the **Delete database**
+menu item, the collector that runs whenever a `database` block is removed by
+any route (every one funnels through `mutate()`), and **Clean up unused
+tables** in Settings → Data & sync for tables orphaned before either existed.
+The sweep must read every body first — including trashed pages, which can be
+restored — and says so rather than guessing if any body fails to load.
+
 ### Caching
 
 Bodies and rows share one ~2.4 MB `localStorage` LRU, so reopening recent work
@@ -981,6 +1004,11 @@ committed drop is the index the indicator was showing, and Escape cancels.
 - **A version of the page is a version of the data.** Snapshots store the
   embedded databases too, and previewing an old version reads that snapshot's
   rows rather than the live table.
+- **Deleting a table** is offered in the database settings menu, behind a
+  confirmation that names the row count and how many row pages will move to
+  the Trash. `⌘Z` puts back all three of its parts — the block, the table and
+  its rows, and the row pages — because a half-restored table would leave rows
+  pointing at pages the reader can only open read-only.
 
 ### 7.3 A row is a note
 
@@ -988,6 +1016,28 @@ Opening a row navigates to a real page: its own blocks, nested sub-pages,
 version history and sharing. Properties sit in a list under the title and the
 title syncs back to the database. Row pages are excluded from the sidebar tree
 (they belong to their database) but appear in breadcrumbs.
+
+**A row and its page are one object, and neither half can be destroyed alone.**
+Deleting a row and trashing its page from the page's own ⋯ menu are the same
+operation: the row leaves the table, the page goes to the Trash, and the page
+carries a copy of the row (`dbRowBackup`) so that restoring it puts the row
+back at the index it came from. A row page whose table has since been deleted
+restores as an ordinary visible page rather than as a hidden one nothing can
+open. Row pages swept up as descendants of a trashed HOST page are not treated
+this way — the whole table is going to the Trash with the host and has to come
+back whole.
+
+**The index carries everything a row page cannot rebuild** — `dbRef`, `hidden`
+and `propsCollapsed` alongside the ordinary page fields. They are one or two
+bytes each and written only when set. Omitting them cost more than it saved:
+a row page came back from a reload as an ordinary page, lost its properties
+panel and its title mirroring, appeared in the sidebar, and — because
+`reconcileChildren()` saw a visible child with no sub-page block — had a link
+to itself appended to the body of the page holding its table, on every reload.
+A workspace stored under the older format is repaired as each table's rows
+arrive: the row still remembers its page in `row.pageId`, so `repairRowPages()`
+puts back what the page forgot, and `reconcileChildren()` additionally refuses
+to treat any page a loaded row claims as an orphan.
 
 ## 8. Sharing
 
@@ -1004,7 +1054,7 @@ Full-page settings with sections: **Account** (Google sign-in/out, profile),
 (source view default, spellcheck, small text), **Versions** (auto-version
 interval, retention), **Data & sync** (adapter status: Firebase vs Demo,
 project id, **Leave the demo and sign in with Google**, export JSON / export
-Markdown, import), **Shortcuts**, **About**.
+Markdown, import, **Clean up unused tables**), **Shortcuts**, **About**.
 
 ### 9.1 Sign-in screen
 

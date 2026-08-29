@@ -1112,6 +1112,7 @@ button:active{transform:scale(.985);opacity:.85}
         <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px">
           <button onClick="{{ exportJson }}" style="height:36px;padding:0 14px;border-radius:5px;font-size:13.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover)">Export JSON</button>
           <button onClick="{{ exportMd }}" style="height:36px;padding:0 14px;border-radius:5px;font-size:13.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover)">Export Markdown</button>
+          <button onClick="{{ cleanTables }}" title="Find tables no page embeds any more and remove them" style="height:36px;padding:0 14px;border-radius:5px;font-size:13.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover)">Clean up unused tables ({{ tableCount }})</button>
           <button onClick="{{ resetDemo }}" style="height:36px;padding:0 14px;border-radius:5px;font-size:13.5px;font-weight:500;color:var(--del-fg)" style-hover="background:var(--del-bg)">Reset demo data</button>
         </div>
       </div>
@@ -1347,6 +1348,17 @@ button:active{transform:scale(.985);opacity:.85}
           </button>
         </sc-for>
       </div>
+    </div>
+    </sc-if>
+
+    <sc-if value="{{ mIsConfirm }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:22px">
+      <div style="font-size:18px;font-weight:700;letter-spacing:-.01em">{{ confirmTitle }}</div>
+      <div style="margin-top:7px;font-size:13.5px;color:var(--muted);line-height:1.65">{{ confirmBody }}</div>
+    </div>
+    <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+      <button onClick="{{ closeModal }}" style="height:38px;padding:0 15px;border-radius:5px;font-size:13.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover);color:var(--text)">Cancel</button>
+      <button onClick="{{ runConfirm }}" style="height:38px;padding:0 17px;border-radius:5px;background:{{ confirmBg }};color:#fff;font-size:13.5px;font-weight:600">{{ confirmLabel }}</button>
     </div>
     </sc-if>
 
@@ -2044,6 +2056,10 @@ class Component extends DCLogic {
         if (this.state.pageId) this.ensureBody(this.state.pageId);
         /* boot resolves the first page without going through openPage */
         this.syncVersionMeta();
+        /* any table whose rows are already in hand — the demo adapter has all
+           of them, a warm cache has some — can repair its row pages now rather
+           than waiting to be opened */
+        this.repairAllRowPages();
       });
     };
     /* B14 — surface the save state next to the breadcrumb */
@@ -2082,6 +2098,8 @@ class Component extends DCLogic {
         if (this.state.pageId) this.ensureBody(this.state.pageId);
         /* a delta can re-point pageId at a page openPage never ran for */
         this.syncVersionMeta();
+        /* a delta can also be the first time a table's rows are in hand */
+        this.repairAllRowPages();
       });
     };
     /* A migration that fails must never look like an empty account — that is
