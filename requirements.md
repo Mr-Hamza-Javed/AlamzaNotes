@@ -465,6 +465,18 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   what discards the forward stack, and in that case the key says so. A
   read-only view stays silent, as §22 requires — there is nothing to explain
   when the reader is not editing.
+
+  **An undo shows you what it changed.** A step whose effect is off screen
+  looks like a key that did nothing, so the block the step touches is brought
+  into view and flashed — `nearest`, so a block already on screen does not
+  jump. The target is found by flattening both block trees and signing each
+  block by *itself*: a change inside a toggle points at the child that changed
+  rather than at the toggle around it. A step that only *removes* leaves
+  nothing to point at, so the nearest block surviving on either side of the gap
+  is used, and a step that changes no block at all — an icon, a title — scrolls
+  nowhere. Where the target sits inside a **collapsed** toggle it renders
+  nothing, so the nearest drawn ancestor is used instead; expanding the toggle
+  would be an edit the reader did not ask for.
 - **Multi-block selection** — lasso from the gutter beside the text, `⌘A`
   twice for the page, or `⇧↑/↓` out of a block.
 
