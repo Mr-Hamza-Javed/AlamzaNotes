@@ -439,6 +439,12 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   blocks through it and the title files its own runs on a pause. (A page has no
   *cover*: that field belongs to database **rows**, and rows travel inside the
   database part of the snapshot already.)
+
+  **Both keys are in both menus.** Redo had two bindings and appeared in no
+  menu at all, and the phone sheet — the only route a phone has, since there is
+  no `⌘Z` to fall back on — offered neither Undo nor Redo. The page menu now
+  lists Redo beside Undo, and the sheet lists both, at the top where they are
+  reached most often.
 - **Multi-block selection** — lasso from the gutter beside the text, `⌘A`
   twice for the page, or `⇧↑/↓` out of a block.
 
