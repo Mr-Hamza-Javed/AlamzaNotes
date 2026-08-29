@@ -454,6 +454,17 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   no `⌘Z` to fall back on — offered neither Undo nor Redo. The page menu now
   lists Redo beside Undo, and the sheet lists both, at the top where they are
   reached most often.
+
+  **Both keys say what they can do.** Pressing one at the end of its stack used
+  to do nothing at all, with no way to tell that from a key that had not
+  registered, so it now answers "Nothing to undo" / "Nothing to redo" — and the
+  menus show it *before* the press, dimming and disabling the entry that would
+  do nothing. `canUndo()`/`canRedo()` decide both. Pending work counts for
+  undo, since a run still on its timer is filed by the key itself before it
+  steps; it does not count for redo, because filing pending work is exactly
+  what discards the forward stack, and in that case the key says so. A
+  read-only view stays silent, as §22 requires — there is nothing to explain
+  when the reader is not editing.
 - **Multi-block selection** — lasso from the gutter beside the text, `⌘A`
   twice for the page, or `⇧↑/↓` out of a block.
 
