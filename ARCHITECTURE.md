@@ -48,17 +48,17 @@ template itself.
 
 | File | Lines | What it owns |
 | --- | ---: | --- |
-| `lib/part-data.js` | 338 | Reading and writing state safely |
+| `lib/part-data.js` | 343 | Reading and writing state safely |
 | `lib/part-editor.js` | 1091 | The typing surface |
-| `lib/part-pages.js` | 389 | Moving between pages, and the page tree |
-| `lib/part-versions.js` | 373 | Snapshots, diff and restore |
+| `lib/part-pages.js` | 462 | Moving between pages, and the page tree |
+| `lib/part-versions.js` | 624 | Snapshots, diff and restore |
 | `lib/part-blocks.js` | 278 | Block structure |
-| `lib/part-database.js` | 1154 | Tables |
+| `lib/part-database.js` | 1415 | Tables |
 | `lib/part-drag.js` | 368 | Dragging |
-| `lib/part-tools.js` | 1285 | Everything else the page needs |
-| `lib/part-menus.js` | 1469 | What menus, modals and sheets contain |
-| `lib/part-render.js` | 705 | What the template receives |
-| `index.dc.html` | 2114 | template + state, lifecycle, persist |
+| `lib/part-tools.js` | 1401 | Everything else the page needs |
+| `lib/part-menus.js` | 1529 | What menus, modals and sheets contain |
+| `lib/part-render.js` | 717 | What the template receives |
+| `index.dc.html` | 2294 | template + state, lifecycle, persist |
 
 ## Method index
 
@@ -68,9 +68,9 @@ Grep this instead of the codebase.
 
 **`lib/part-editor.js`** — `nearView`, `syncDom`, `blockHtml`, `elRef`, `mathRef`, `gutRef`, `paintGutter`, `afterEdit`, `highlightNow`, `codeEdit`, `setCodeText`, `readBlock`, `editText`, `selectBlockRange`, `growBlockSel`, `onInput`, `caretRect`, `clearTrigger`, `insertMention`, `tryShortcut`, `insertAfter`, `removeBlock`, `onKey`, `wrapSel`, `onPaste`, `onFocus`, `onBlur`
 
-**`lib/part-pages.js`** — `flat`, `openPage`, `mobileBack`, `goHome`, `newPage`, `versionById`, `normSnap`, `vsnap`, `vblocks`, `ensureVersion`, `syncVersionMeta`, `ensureVersionMeta`, `primeLatestVersion`, `cacheVersion`, `subtreeIds`, `descendants`, `trashPage`, `restorePage`
+**`lib/part-pages.js`** — `flat`, `openPage`, `mobileBack`, `goHome`, `newPage`, `versionById`, `normSnap`, `vsnap`, `vblocks`, `ensureVersion`, `syncVersionMeta`, `ensureVersionMeta`, `primeLatestVersion`, `cacheVersion`, `versionMetaKnown`, `versionGone`, `mergeVersions`, `deleteVersion`, `subtreeIds`, `snapshotIds`, `descendants`, `trashPage`, `restorePage`
 
-**`lib/part-versions.js`** — `toggleTheme`, `toggleSource`, `toast`, `copyMarkdown`, `buildSnapshot`, `nextVersionN`, `createVersion`, `dbsUsedBy`, `restore`, `openDiff`, `diffPending`, `blocksOf`, `diffScope`, `labelOf`, `diffText`, `diffStyle`, `tokens`, `plain`
+**`lib/part-versions.js`** — `toggleTheme`, `toggleSource`, `toast`, `copyMarkdown`, `buildSnapshot`, `ensureSnapshotReady`, `ensureBaseline`, `nextVersionN`, `createVersion`, `authorVersion`, `remapSnapshot`, `remapVersionMeta`, `dbsUsedBy`, `restoreScope`, `restore`, `applyRestore`, `openDiff`, `diffPending`, `blocksOf`, `diffScope`, `labelOf`, `diffText`, `diffStyle`, `tokens`, `plain`
 
 **`lib/part-blocks.js`** — `moveBlock`, `startDrag`, `turnInto`, `duplicateBlock`, `insertOfType`, `slashKey`, `slashCatalog`, `mentionCatalog`
 
@@ -78,7 +78,7 @@ Grep this instead of the codebase.
 
 **`lib/part-drag.js`** — `rowGrab`, `patchDb`
 
-**`lib/part-tools.js`** — `readHtml`, `histFor`, `histJson`, `syncTail`, `applyHist`, `undo`, `redo`, `isAncestor`, `repair`, `mergePrev`, `removeAt`, `caretX`, `caretToX`, `applyMark`, `setBlockColor`, `openSearch`, `flashBlock`, `changedIds`, `tableEdit`, `tableAdd`, `tableDel`, `commentCount`, `addComment`, `resolveComment`, `origin`, `pageUrl`, `shareUrl`, `inviteUrl`, `publishSnapshot`, `setPublished`, `republish`, `openPublic`, `publicSlugFromUrl`, `sendInvite`, `invitedMe`, `answerInvite`, `iconEl`, `childrenOf`, `reconcileChildren`, `stripSubpage`, `movePage`, `navGrab`, `startResize`, `deepDuplicatePage`, `lassoStart`, `trackAnchor`, `pageStats`, `headingHits`, `tableNav`, `upModal`
+**`lib/part-tools.js`** — `readHtml`, `histFor`, `histJson`, `syncTail`, `applyHist`, `undo`, `redo`, `isAncestor`, `repair`, `mergePrev`, `removeAt`, `caretX`, `caretToX`, `histJsonDeep`, `syncTailDeep`, `applyMark`, `setBlockColor`, `openSearch`, `flashBlock`, `changedIds`, `tableEdit`, `tableAdd`, `tableDel`, `commentCount`, `addComment`, `resolveComment`, `origin`, `pageUrl`, `shareUrl`, `inviteUrl`, `publishSnapshot`, `setPublished`, `republish`, `openPublic`, `publicSlugFromUrl`, `sendInvite`, `invitedMe`, `answerInvite`, `iconEl`, `childrenOf`, `reconcileChildren`, `stripSubpage`, `movePage`, `navGrab`, `startResize`, `deepDuplicatePage`, `lassoStart`, `trackAnchor`, `pageStats`, `headingHits`, `tableNav`, `upModal`
 
 **`lib/part-menus.js`** — `extraVals`
 
@@ -97,6 +97,24 @@ Grep this instead of the codebase.
 | Something shows the wrong value in the UI | `part-render.js` |
 | What the UI looks like | the template in `index.dc.html` |
 | Loading, saving, bandwidth | `lib/store.js` |
+
+## Tests
+
+```
+node test/run.js            every suite
+node test/run.js A4         only suites/tests whose name matches
+```
+
+No dependencies and no build. `test/harness.js` assembles the same prototype
+`lib/parts.js` builds, inside a Node `vm` context, and hands back a live
+instance with a recording store stub — so the parts can be driven exactly as
+the app drives them, without a DOM. `setState` commits synchronously there, and
+`loadRealStore()` runs the real `lib/store.js` against a Firebase stub whose
+writes can be made to fail on command.
+
+`test/template.test.js` is the one that guards `index.html`: it parses the app
+shell and checks that every `{{ binding }}` in the markup is actually produced
+by `renderVals()`, which otherwise fails silently as a blank node.
 
 ## Data layer (unchanged by the split)
 

@@ -15,12 +15,18 @@ describe('harness', () => {
       assert.eq(typeof app[m], 'function', m + ' should be on the prototype'));
   });
 
+  /* Every part is folded onto the SAME prototype, so two parts defining one
+     name means the earlier one silently disappears — which is how a database
+     helper once replaced the editor's editText and stopped typing working.
+     lib/parts.js warns; this turns the warning into a failure. */
   it('no two parts claim the same method name', () => {
-    const { sandbox } = newContext();
-    /* applyTo is what records ownership, so give it a target */
+    const clashes = [];
+    const { sandbox } = newContext({
+      warn: (...a) => { if (String(a[0]).includes('defined twice')) clashes.push(a.join(' ')); }
+    });
     sandbox.AlamzaParts.applyTo({});
-    const owners = sandbox.AlamzaParts.owners();
-    assert.ok(Object.keys(owners).length > 100, 'expected the whole prototype');
+    assert.eq(clashes.length, 0, clashes.join('\n      '));
+    assert.ok(Object.keys(sandbox.AlamzaParts.owners()).length > 100, 'expected the whole prototype');
   });
 
   it('setState commits synchronously and runs the callback', () => {

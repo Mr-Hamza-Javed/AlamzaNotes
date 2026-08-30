@@ -787,6 +787,14 @@ four, plus every database any of them embeds. Anything less is a version that
 never existed: restoring it would leave the nested pages at their newest state
 while the parent went back in time.
 
+The subtree here is `snapshotIds()`, not `subtreeIds()`. The two differ by the
+database ROW pages: `subtreeIds` answers the sidebar's question — what can the
+reader navigate to — and leaves them out, because a row page is reached through
+its table. A snapshot is not a navigation question. A row and the page it opens
+as are two halves of one object, and capturing only the half that lives in the
+table is how a restore put a row's CELLS back to v3 while the note behind that
+row stayed at today.
+
 **Storage** — metadata and payload live apart, because they have opposite
 access patterns:
 
@@ -799,8 +807,20 @@ vdata/<pageId>/<vId>    the PAYLOAD — { b, d, p }  · read only when a version
 
 The payload is `b` (root blocks), `d` (databases used anywhere in the subtree)
 and `p` (every descendant, keyed by page id, each with title, icon, parent,
-order and blocks). `scope[]` in the metadata is a title-only manifest, so the
-diff can list the nested pages without fetching anything. Snapshots written
+order, blocks and the fields that say what the page IS — icon type, cover,
+favourite, `hidden`, `dbRef`). Those last ones exist because restore RECREATES
+a child that has been deleted since: rebuilt from title/icon/parent/order alone
+it came back stripped of its cover and its favourite, and a rebuilt row page
+came back with no `dbRef` at all — an orphan nothing in the app can open.
+Payloads written before they were captured simply lack the keys, and every one
+of them falls back on read. `scope[]` in the metadata is a title-only manifest,
+so the diff can list the nested pages without fetching anything.
+
+**Metadata is metadata.** `blocks` and `dbs` are payload and are stripped on the
+way to `vmeta`. Only `blocks` used to be, so every table a snapshot captured was
+duplicated into the version list — the one node a page open always downloads,
+and a 400-row table with it. `dbFor()` reads the previewed version's tables out
+of the payload, which is fetched exactly when a version is opened. Snapshots written
 before deep capture are a bare block array and are normalised on read by
 `normSnap()` — never special-cased at the call sites.
 
@@ -808,10 +828,33 @@ before deep capture are a bare block array and are normalised on read by
 metadata has not been fetched presents as `versions: []`. That is the
 null-vs-empty trap again, and here it is fatal: the empty list would be pushed
 straight back over the real one and the history would be gone for good. Two
-defences — `ensureVersionMeta()` fetches it whenever a page opens, and `push()`
-refuses to write an empty version list for a page whose metadata was never
-confirmed (`vmetaSeen`). A list fetched from the server never overwrites one
-authored in this session.
+defences become three — `ensureVersionMeta()` fetches it whenever a page opens,
+`push()` refuses to write an empty version list for a page whose metadata was
+never confirmed (`vmetaSeen`), and **`createVersion()` will not author against a
+history it has not read**.
+
+That last one is the defence the first two cannot supply, because the list a
+capture writes is not empty — it has one entry. `vmetaSeen` may only be set by
+something that has really seen the list: a completed read, or a push that wrote
+a non-empty one. Authoring a snapshot is neither, and while it did claim to be
+(`markVersionMeta`, now gone) a capture taken inside the fetch window made the
+app believe the single entry it had just written WAS the history: the read
+short-circuited and the next push put one snapshot where five had been. The
+history panel is part of this — an unread list renders as *loading*, never as
+"No snapshots yet · Take the first snapshot", which was an invitation to make
+exactly that click.
+
+**Two version lists are merged by identity, never by length.** `mergeVersions()`
+unions them by id and orders the result by `createdAt`. Comparing lengths is
+wrong in both directions: two devices taking a snapshot at the same moment
+produce two lists of equal length and one of the snapshots was silently
+dropped, and a list still carrying a snapshot the reader had just deleted was
+"longer", so the deletion was undone and pushed back. A deletion is therefore
+remembered explicitly (`versionGone`) — the absence of an id means "not
+fetched" on one side and "removed on purpose" on the other, and only a
+tombstone can tell those apart. Deleting is one door, `deleteVersion()`: the
+payload node, the memo, the tombstone, the row — and it asks first, because it
+cannot be undone.
 
 `openPage` is **not** the only way a page becomes current — boot resolves the
 first page directly, a remote delta can re-point `pageId`, and the versions
@@ -822,12 +865,29 @@ page the app opens on, showing whatever stale list the mirror happened to hold.
 **Capture is all-or-nothing.** Every body and every table in the subtree must
 be in hand before a snapshot is authored — a page still loading would be
 captured empty, which is how a version silently "doesn't store the changes".
-`createVersion()` prefetches, then re-runs itself. It also waits for the
-*previous* snapshot, because that is the baseline for the message and the +/−
-stat; diffing against a snapshot that has not loaded reports the entire page as
-newly added, and that wrong history cannot be recomputed later. A lock is held
-across the whole author, since two calls in one tick would both read the
-pre-commit list and the second would discard the first.
+`ensureSnapshotReady()` is that wait, and `ensureBaseline()` is the wait for the
+*previous* snapshot, which is the baseline for the message and the +/− stat:
+diffing against a snapshot that has not loaded reports the entire page as newly
+added, and that wrong history cannot be recomputed later.
+
+`createVersion()` asks its four questions in order — the stored history, the
+subtree, the baseline, and whether the reader is still on the page — and any of
+them saying no ends the attempt with a message. It used to be four re-entrant
+calls to itself, which is unbounded when one of them can never succeed: a body
+the server does not hold never becomes ready, so a capture on such a page sat in
+a fetch loop, billing a read and raising a toast on every pass, for as long as
+the tab stayed open. Everything the author needs is in hand before it runs, so
+`authorVersion()` is synchronous and no list can move under it — and the new
+entry is merged into whatever the list holds at write time, not into the copy
+read before the waiting started. A lock is held across the whole thing, since
+two calls in one tick would both read the pre-commit list and the second would
+discard the first.
+
+**"Absent from this capture" is not "deleted".** `deep.gone` counts a child that
+has really left the workspace or gone to the Trash. A page whose body simply had
+not been fetched is also absent, and counting it recorded "removed 3 nested
+pages" for three intact pages — permanently, since a stat cannot be recomputed.
+`buildSnapshot` reports `partial` when something was missing anyway.
 
 **A snapshot with nothing new is refused.** Identical content clutters the
 history and makes every diff against it read "identical", so `createVersion`
@@ -901,11 +961,28 @@ version list than the one already in state — deletion has its own path.
   **and** word-level highlighting inside changed blocks.
 - Diff summary header: `+N blocks · −N blocks · ~N changed`.
 
+**Restore says how far it reaches before the click.** A restore rewrites every
+nested page the snapshot captured and replaces every table they embed, and the
+dialog used to say only "the working copy is overwritten with this version" — so
+the reach was discovered afterwards. `restoreScope()` counts the sub-pages and
+the tables, and singles out any table that is ALSO embedded on a page outside
+this subtree: restoring here changes a page over there, which is the one effect
+no reader would predict. That gets a warning naming the pages.
+
 **Restore** — opens a dialog with three choices:
 1. **Replace current** — current content is overwritten by the old version.
+   Nothing is snapshotted first, so ⌘Z is the only way back — and it is a real
+   way back: the step a restore files carries the whole subtree (`syncTailDeep`
+   writes the other pages' blocks into the entry's `x`, and the databases of the
+   whole subtree into its `d`). Filed as an ordinary single-page entry, ⌘Z put
+   the root page back and left every nested page and every table at the restored
+   state — a document that never existed.
 2. **Restore as new version** — history preserved; the old content becomes the
    new current. The safety snapshot it takes first is equally deep, is built by
-   the same builder, and waits for the previous snapshot so its stat is real.
+   the same builder, and waits for the same subtree AND the same baseline the
+   ordinary capture waits for. It did not wait for the subtree, so it captured
+   only the pages that happened to be loaded, counted the rest as deleted, and
+   left the reader with a way back that did not lead all the way back.
 3. **Open read-only** — just look at the old version, no writes.
 
 **Read-only obeys the null-vs-empty contract.** A snapshot whose payload is
@@ -922,9 +999,19 @@ many nested pages actually *changed* (`deepStat.touched`), not how many exist.
 
 Restore rewrites the whole subtree in one state write: root, every captured
 child, and any child deleted since the snapshot, which is **recreated** —
-otherwise the restored parent links to nothing. Pages created *after* the
+otherwise the restored parent links to nothing. For the same reason a captured
+child sitting in the Trash comes back out of it. Pages created *after* the
 snapshot are left alone; deleting them would make restore destructive in a way
-nothing warned about.
+nothing warned about. The toast says what happened: how many nested pages, how
+many were recreated, how many were brought back from the Trash.
+
+**Duplicating a page carries its history, renamed.** A payload names pages,
+tables, rows, views and blocks by id, so the copy's payloads are remapped onto
+the copy's own ids (`remapSnapshot`) once the whole tree has been cloned and
+every id is known. They used to be copied verbatim: restoring one of them on the
+COPY wrote the snapshot's child blocks into the ORIGINAL's children and replaced
+the original's tables. Cold payloads are fetched before the duplicate is made,
+or the copy comes away with a history of rows that open on nothing.
 
 **The diff obeys the null-vs-empty contract too.** A nested page whose body has
 not been fetched is `null`, and diffing that against a real snapshot reports

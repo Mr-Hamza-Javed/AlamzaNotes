@@ -20,9 +20,10 @@ const ROOT = path.join(__dirname, '..');
 
 /* Everything the parts read off the global scope. markdown/diff/helpers are
    real; the browser-only surfaces are stubs, because no test drives the DOM. */
-function newContext() {
+function newContext(consoleOver) {
   const sandbox = {
-    console, setTimeout, clearTimeout, setInterval, clearInterval,
+    console: Object.assign({}, console, consoleOver || {}),
+    setTimeout, clearTimeout, setInterval, clearInterval,
     Promise, JSON, Math, Date, Object, Array, String, Number, Boolean,
     RegExp, Error, Map, Set, isNaN, parseInt, parseFloat, encodeURIComponent,
     decodeURIComponent, Intl, TextEncoder, TextDecoder
@@ -37,6 +38,8 @@ function newContext() {
     activeElement: null,
     documentElement: { getAttribute: () => 'light', setAttribute: () => {}, style: { setProperty: () => {} } },
     getElementById: () => null,
+    querySelector: () => null,
+    querySelectorAll: () => [],
     addEventListener: () => {}
   };
   sandbox.matchMedia = () => ({ matches: false });
@@ -138,7 +141,7 @@ function makeApp(initial, storeOver) {
       forceUpdate() { this.renders++; }
       persist() { this.persists++; }
       /* browser-only surfaces the version code brushes past */
-      syncDom() {} applyTheme() {} flashBlock() {} histFlush() {}
+      syncDom() {} applyTheme() {} flashBlock() {}
       repairRowPages() {} reconcileChildren() { return Promise.resolve(); }
       normAllDbs(d) { return d; }
     }

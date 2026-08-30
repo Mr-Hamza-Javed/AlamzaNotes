@@ -1400,6 +1400,20 @@ button:active{transform:scale(.985);opacity:.85}
     <div style="padding:22px">
       <div style="font-size:18px;font-weight:700;letter-spacing:-.01em">Restore {{ restoreTag }}</div>
       <div style="margin-top:5px;font-size:13.5px;color:var(--muted);line-height:1.6">{{ restoreMsg }}</div>
+      <sc-if value="{{ restoreLoading }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:14px;display:flex;align-items:center;gap:9px">
+          <span style="flex:none;width:12px;height:12px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--accent);animation:aSpin .7s linear infinite"></span>
+          <span style="font-size:12.5px;color:var(--muted)">Working out what this version covers…</span>
+        </div>
+      </sc-if>
+      <sc-if value="{{ restoreReach }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:14px;padding:10px 12px;border-radius:5px;background:var(--soft);border:1px solid var(--border);font-size:12.5px;line-height:1.55;color:var(--muted)">{{ restoreReach }}</div>
+      </sc-if>
+      <sc-if value="{{ restoreWarn }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:8px;display:flex;align-items:flex-start;gap:9px;padding:11px 12px;border-radius:5px;background:var(--del-bg);border:1px solid var(--del-strong);font-size:12.5px;line-height:1.55;color:var(--del-fg)">
+          <span style="flex:none;font-size:13px">⚠</span><span style="flex:1">{{ restoreWarnText }}</span>
+        </div>
+      </sc-if>
       <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">
         <sc-for list="{{ restoreOpts }}" as="o" hint-placeholder-count="3">
           <button onClick="{{ o.run }}" style="display:flex;align-items:flex-start;gap:12px;padding:13px 14px;border-radius:6px;border:1px solid var(--border);text-align:left;background:var(--canvas)" style-hover="border-color:var(--accent);background:var(--accent-soft)">
@@ -1411,6 +1425,12 @@ button:active{transform:scale(.985);opacity:.85}
           </button>
         </sc-for>
       </div>
+      <sc-if value="{{ isRestoring }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:14px;display:flex;align-items:center;gap:9px">
+          <span style="flex:none;width:12px;height:12px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--accent);animation:aSpin .7s linear infinite"></span>
+          <span style="font-size:12.5px;color:var(--muted)">Restoring…</span>
+        </div>
+      </sc-if>
     </div>
     </sc-if>
 
@@ -1928,6 +1948,7 @@ class Component extends DCLogic {
     focusId: null, hoverId: null, dragId: null, dropId: null,
     panel: null, modal: null, sheet: null, menu: null, slash: null,
     dbView: {}, dbQuery: {}, roVersion: null, toast: null, cellEdit: null,
+    restoring: false,
     pubSlug: null, pubDoc: null, pubLoading: false, pubLocked: false, pubMissing: false,
     diffA: null, diffB: 'current', diffMode: 'split',
     isMobile: false, sidebarOpen: true, search: '', kbOpen: false
