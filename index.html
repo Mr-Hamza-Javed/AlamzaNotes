@@ -692,12 +692,18 @@ button:active{transform:scale(.985);opacity:.85}
                   </button>
                 </sc-if>
                 <sc-if value="{{ r.isDB }}" hint-placeholder-val="{{ false }}">
-                  <div data-db="1" style="margin:14px 0;margin-right:{{ dbBleed }};border:1px solid var(--border);border-radius:6px;background:var(--surface);overflow:hidden">
+                  <div data-db="{{ r.dbId }}" style="margin:14px 0;margin-right:{{ dbBleed }};border:1px solid var(--border);border-radius:6px;background:var(--surface);overflow:hidden">
                     <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border)">
                       <button onClick="{{ r.dbPickIcon }}" title="Change the database icon" style="width:22px;height:22px;flex:none;border-radius:4px;display:grid;place-items:center" style-hover="background:var(--hover)">{{ r.dbIconEl }}</button>
                       <button onClick="{{ r.dbMenu }}" title="Rename and configure" style="font-weight:600;font-size:14px;padding:3px 6px;border-radius:4px;max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" style-hover="background:var(--hover)">{{ r.dbName }}</button>
                       <span style="font-size:12px;color:var(--faint)">{{ r.dbCount }}</span>
                       <div style="flex:1"></div>
+                      <span style="position:relative;display:flex;align-items:center">
+                        <input value="{{ r.dbQuery }}" onChange="{{ r.dbSetQuery }}" placeholder="Find…" aria-label="Find in this table" style="width:118px;height:26px;padding:0 22px 0 9px;border-radius:4px;border:1px solid {{ r.dbQueryBorder }};background:var(--canvas);color:var(--text);font-size:12px;outline:none" />
+                        <sc-if value="{{ r.dbHasQuery }}" hint-placeholder-val="{{ false }}">
+                          <button onClick="{{ r.dbClearQuery }}" title="Clear the find" style="position:absolute;right:3px;width:17px;height:17px;border-radius:3px;display:grid;place-items:center;color:var(--faint);font-size:11px" style-hover="background:var(--hover);color:var(--text)">✕</button>
+                        </sc-if>
+                      </span>
                       <button onClick="{{ r.dbAddProp }}" title="Add a property" style="height:26px;padding:0 9px;border-radius:4px;font-size:12px;color:var(--muted)" style-hover="background:var(--hover);color:var(--text)">＋ Property</button>
                       <button onClick="{{ r.dbOpenProps }}" title="Properties" style="height:26px;padding:0 9px;border-radius:4px;font-size:12px;color:var(--muted)" style-hover="background:var(--hover);color:var(--text)">Properties</button>
                       <button onClick="{{ r.dbFilter }}" style="height:26px;padding:0 9px;border-radius:4px;font-size:12px;color:{{ r.filterColor }};background:{{ r.filterBg }}" style-hover="background:var(--hover)">Filter</button>
@@ -737,6 +743,9 @@ button:active{transform:scale(.985);opacity:.85}
                             <span style="font-size:12px;color:var(--faint);white-space:nowrap">{{ row.meta }}</span>
                           </div>
                         </sc-for>
+                        <sc-if value="{{ r.dbHasRows }}" hint-placeholder-val="{{ true }}">
+                          <button onClick="{{ r.dbAddRow }}" style="width:100%;display:flex;align-items:center;gap:8px;padding:9px 14px;font-size:12.5px;color:var(--faint);border-bottom:1px solid var(--border);text-align:left" style-hover="background:var(--hover);color:var(--text)">＋ New</button>
+                        </sc-if>
                       </div>
                       </sc-if>
 
@@ -762,17 +771,24 @@ button:active{transform:scale(.985);opacity:.85}
                       <div style="min-width:640px;animation:aFade .2s ease">
                         <div style="display:flex;border-bottom:1px solid var(--border);background:var(--soft)">
                           <sc-for list="{{ r.dbProps }}" as="pr" hint-placeholder-count="5">
-                            <button onClick="{{ pr.menu }}" style="width:{{ pr.w }};flex:none;display:flex;align-items:center;gap:6px;padding:8px 12px;font-size:11.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;border-right:1px solid var(--border);text-align:left" style-hover="background:var(--hover);color:var(--text)">
-                              <span style="flex:none;opacity:.8;font-weight:400">{{ pr.glyph }}</span>
-                              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">{{ pr.name }}</span>
-                            </button>
+                            <div data-dbcol="{{ pr.id }}" style="width:{{ pr.w }};flex:none;position:relative;display:flex;align-items:stretch;border-right:1px solid var(--border)">
+                              <button onClick="{{ pr.menu }}" style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:8px 12px;font-size:11.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-align:left" style-hover="background:var(--hover);color:var(--text)">
+                                <span style="flex:none;opacity:.8;font-weight:400">{{ pr.glyph }}</span>
+                                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">{{ pr.name }}</span>
+                                <span style="flex:none;color:var(--accent);font-size:11px">{{ pr.sortMark }}</span>
+                              </button>
+                              <span onMouseDown="{{ pr.resize }}" title="Drag to resize this column" style="position:absolute;top:0;right:-3px;width:7px;height:100%;cursor:col-resize;z-index:2"></span>
+                            </div>
                           </sc-for>
                           <button onClick="{{ r.dbAddProp }}" title="Add a property" style="width:44px;flex:none;display:grid;place-items:center;color:var(--faint);font-size:14px" style-hover="background:var(--hover);color:var(--text)">＋</button>
                         </div>
                         <sc-for list="{{ r.dbRows }}" as="row" hint-placeholder-count="4">
                           <div data-dbrow="{{ row.id }}" onMouseDown="{{ row.grab }}" onClick="{{ row.open }}" onContextMenu="{{ row.context }}" style="display:flex;border-bottom:1px solid var(--border);cursor:pointer;opacity:{{ row.dragOp }}"  style-hover="background:var(--hover);--rh:1">
                             <sc-for list="{{ row.cells }}" as="cl" hint-placeholder-count="5">
-                              <span style="width:{{ cl.w }};flex:none;padding:8px 12px;font-size:13px;border-right:1px solid var(--border);display:flex;align-items:center;gap:4px;flex-wrap:wrap;min-height:34px">
+                              <span data-dbcell="1" data-dbcol="{{ cl.id }}" onClick="{{ cl.tap }}" style="width:{{ cl.w }};flex:none;padding:8px 12px;font-size:13px;border-right:1px solid var(--border);display:flex;align-items:center;gap:4px;flex-wrap:wrap;min-height:34px;cursor:{{ cl.cursor }};background:{{ cl.cellBg }};box-shadow:{{ cl.cellRing }}">
+                                <sc-if value="{{ cl.editing }}" hint-placeholder-val="{{ false }}">
+                                  <input ref="{{ cl.editRef }}" type="{{ cl.editType }}" value="{{ cl.editValue }}" onChange="{{ cl.change }}" onBlur="{{ cl.commit }}" onKeyDown="{{ cl.key }}" style="width:100%;border:0;background:none;color:var(--text);font-size:13px;outline:none;padding:0" />
+                                </sc-if>
                                 <sc-if value="{{ cl.isChips }}" hint-placeholder-val="{{ false }}">
                                   <sc-for list="{{ cl.chips }}" as="c" hint-placeholder-count="1">
                                     <span style="font-size:11px;padding:1px 7px;border-radius:20px;background:{{ c.bg }};color:{{ c.fg }}">{{ c.label }}</span>
@@ -788,13 +804,16 @@ button:active{transform:scale(.985);opacity:.85}
                             </sc-for>
                           </div>
                         </sc-for>
+                        <sc-if value="{{ r.dbHasRows }}" hint-placeholder-val="{{ true }}">
+                          <button onClick="{{ r.dbAddRow }}" style="width:100%;display:flex;align-items:center;gap:8px;padding:9px 14px;font-size:12.5px;color:var(--faint);border-bottom:1px solid var(--border);text-align:left" style-hover="background:var(--hover);color:var(--text)">＋ New</button>
+                        </sc-if>
                       </div>
                       </sc-if>
 
                       <sc-if value="{{ r.dbIsBoard }}" hint-placeholder-val="{{ false }}">
                       <div style="display:flex;gap:12px;padding:14px;align-items:flex-start;min-width:min-content;animation:aFade .2s ease">
                         <sc-for list="{{ r.dbGroups }}" as="g" hint-placeholder-count="4">
-                          <div data-dbgroup="{{ g.name }}" style="width:220px;flex:none;min-height:110px;border-radius:6px;padding-bottom:8px">
+                          <div data-dbgroup="{{ g.key }}" style="width:220px;flex:none;min-height:110px;border-radius:6px;padding-bottom:8px">
                             <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;padding:0 2px;pointer-events:none">
                               <span style="font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:20px;background:{{ g.bg }};color:{{ g.fg }}">{{ g.name }}</span>
                               <span style="font-size:11.5px;color:var(--faint)">{{ g.count }}</span>
@@ -813,10 +832,20 @@ button:active{transform:scale(.985);opacity:.85}
                                   </div>
                                 </div>
                               </sc-for>
+                              <button onClick="{{ g.add }}" title="Add a card to this column" style="height:30px;border-radius:5px;border:1px dashed var(--border);color:var(--faint);font-size:12.5px;display:flex;align-items:center;justify-content:center;gap:5px" style-hover="background:var(--hover);color:var(--text);border-color:var(--faint)">＋ New</button>
                             </div>
                           </div>
                         </sc-for>
                       </div>
+                      </sc-if>
+
+                      <sc-if value="{{ r.dbEmpty }}" hint-placeholder-val="{{ false }}">
+                        <div style="padding:32px 20px 36px;text-align:center;animation:aFade .2s ease">
+                          <div style="font-size:22px;opacity:.55">{{ r.dbEmptyGlyph }}</div>
+                          <div style="font-size:13.5px;font-weight:600;margin-top:9px">{{ r.dbEmptyTitle }}</div>
+                          <div style="font-size:12.5px;color:var(--muted);margin-top:3px;max-width:340px;margin-left:auto;margin-right:auto;text-wrap:pretty">{{ r.dbEmptyBody }}</div>
+                          <button onClick="{{ r.dbEmptyRun }}" style="margin-top:13px;height:28px;padding:0 13px;border-radius:5px;font-size:12.5px;border:1px solid var(--border);color:var(--text)" style-hover="background:var(--hover);border-color:var(--faint)">{{ r.dbEmptyAction }}</button>
+                        </div>
                       </sc-if>
 
                     </div>
@@ -1112,6 +1141,7 @@ button:active{transform:scale(.985);opacity:.85}
         <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px">
           <button onClick="{{ exportJson }}" style="height:36px;padding:0 14px;border-radius:5px;font-size:13.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover)">Export JSON</button>
           <button onClick="{{ exportMd }}" style="height:36px;padding:0 14px;border-radius:5px;font-size:13.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover)">Export Markdown</button>
+          <button onClick="{{ cleanTables }}" title="Find tables no page embeds any more and remove them" style="height:36px;padding:0 14px;border-radius:5px;font-size:13.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover)">Clean up unused tables ({{ tableCount }})</button>
           <button onClick="{{ resetDemo }}" style="height:36px;padding:0 14px;border-radius:5px;font-size:13.5px;font-weight:500;color:var(--del-fg)" style-hover="background:var(--del-bg)">Reset demo data</button>
         </div>
       </div>
@@ -1157,8 +1187,21 @@ button:active{transform:scale(.985);opacity:.85}
     <span style="font-size:13px;color:var(--muted)">Published with Alamza Notes</span>
     <div style="flex:1"></div>
     <span style="font-size:12px;color:var(--faint)">Read-only</span>
-    <button onClick="{{ exitPublic }}" style="height:30px;padding:0 12px;border-radius:5px;font-size:12.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover)">Exit preview</button>
+    <button onClick="{{ exitPublic }}" style="height:30px;padding:0 12px;border-radius:5px;font-size:12.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover)">{{ exitPublicLabel }}</button>
   </div>
+  <sc-if value="{{ publicLoading }}" hint-placeholder-val="{{ false }}">
+    <div style="max-width:360px;margin:16vh auto;text-align:center;color:var(--muted)">
+      <span style="display:inline-block;width:16px;height:16px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--accent);animation:aSpin .7s linear infinite"></span>
+      <div style="margin-top:12px;font-size:13.5px">Fetching this page…</div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ publicMissing }}" hint-placeholder-val="{{ false }}">
+    <div style="max-width:400px;margin:14vh auto;text-align:center">
+      <div style="font-size:34px">🔗</div>
+      <div style="margin-top:14px;font-size:20px;font-weight:700">This link is not published</div>
+      <div style="margin-top:6px;color:var(--muted);font-size:13.5px;line-height:1.6">It may have been turned off, or the address may be mistyped.</div>
+    </div>
+  </sc-if>
   <sc-if value="{{ publicLocked }}" hint-placeholder-val="{{ false }}">
     <div style="max-width:360px;margin:14vh auto;text-align:center">
       <div style="font-size:34px">🔒</div>
@@ -1171,9 +1214,9 @@ button:active{transform:scale(.985);opacity:.85}
   </sc-if>
   <sc-if value="{{ publicOpen }}" hint-placeholder-val="{{ true }}">
     <div style="max-width:720px;margin:0 auto;padding:56px 28px 120px">
-      <div style="font-size:46px;line-height:1">{{ pageIcon }}</div>
-      <div style="margin-top:14px;font-size:40px;font-weight:700;letter-spacing:-.022em;line-height:1.15;text-wrap:pretty">{{ pageTitle }}</div>
-      <div style="margin-top:10px;font-size:13px;color:var(--faint)">{{ editedLabel }}</div>
+      <div style="font-size:46px;line-height:1">{{ publicIcon }}</div>
+      <div style="margin-top:14px;font-size:40px;font-weight:700;letter-spacing:-.022em;line-height:1.15;text-wrap:pretty">{{ publicTitle }}</div>
+      <div style="margin-top:10px;font-size:13px;color:var(--faint)">{{ publicWhen }}</div>
       <div style="margin-top:34px;font-size:16.5px;line-height:1.75" ref="{{ publicRef }}"></div>
     </div>
   </sc-if>
@@ -1265,6 +1308,21 @@ button:active{transform:scale(.985);opacity:.85}
         <span style="flex:none;font-size:11.5px;color:var(--accent)">{{ m.mark }}</span>
       </button>
     </sc-if>
+    <sc-if value="{{ m.isCond }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:5px;padding:3px 6px 6px">
+        <select value="{{ m.opValue }}" onChange="{{ m.setOp }}" style="flex:none;width:96px;height:28px;border-radius:4px;border:1px solid var(--border);background:var(--canvas);color:var(--text);font-size:12px;padding:0 5px;outline:none">
+          <sc-for list="{{ m.ops }}" as="o" hint-placeholder-count="3">
+            <option value="{{ o.id }}">{{ o.label }}</option>
+          </sc-for>
+        </select>
+        <sc-if value="{{ m.needsValue }}" hint-placeholder-val="{{ true }}">
+          <input type="{{ m.inputType }}" value="{{ m.value }}" onChange="{{ m.set }}" placeholder="{{ m.placeholder }}" style="flex:1;min-width:0;height:28px;border-radius:4px;border:1px solid var(--border);background:var(--canvas);color:var(--text);font-size:12.5px;padding:0 7px;outline:none" style-focus="border-color:var(--accent)" />
+        </sc-if>
+        <sc-if value="{{ m.hasFilter }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ m.clear }}" title="Clear this filter" style="width:22px;height:28px;flex:none;border-radius:4px;display:grid;place-items:center;color:var(--faint);font-size:11px" style-hover="background:var(--hover);color:var(--del-fg)">✕</button>
+        </sc-if>
+      </div>
+    </sc-if>
     <sc-if value="{{ m.isOption }}" hint-placeholder-val="{{ false }}">
       <div style="display:flex;align-items:center;gap:5px;padding:3px 6px;border-radius:3px" style-hover="background:var(--hover)">
         <span style="display:flex;flex-direction:column">
@@ -1350,6 +1408,17 @@ button:active{transform:scale(.985);opacity:.85}
     </div>
     </sc-if>
 
+    <sc-if value="{{ mIsConfirm }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:22px">
+      <div style="font-size:18px;font-weight:700;letter-spacing:-.01em">{{ confirmTitle }}</div>
+      <div style="margin-top:7px;font-size:13.5px;color:var(--muted);line-height:1.65">{{ confirmBody }}</div>
+    </div>
+    <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+      <button onClick="{{ closeModal }}" style="height:38px;padding:0 15px;border-radius:5px;font-size:13.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover);color:var(--text)">Cancel</button>
+      <button onClick="{{ runConfirm }}" style="height:38px;padding:0 17px;border-radius:5px;background:{{ confirmBg }};color:#fff;font-size:13.5px;font-weight:600">{{ confirmLabel }}</button>
+    </div>
+    </sc-if>
+
     <sc-if value="{{ mIsEmoji }}" hint-placeholder-val="{{ false }}">
     <div style="padding:14px 14px 8px;border-bottom:1px solid var(--border)">
       <input value="{{ emojiQ }}" onChange="{{ setEmojiQ }}" placeholder="Search emoji" autoFocus="{{ true }}" style="width:100%;height:36px;border-radius:5px;border:1px solid var(--border);background:var(--canvas);padding:0 12px;font-size:14px;outline:none" />
@@ -1410,13 +1479,17 @@ button:active{transform:scale(.985);opacity:.85}
           <button onClick="{{ copyShare }}" style="height:38px;padding:0 14px;border-radius:4px;background:var(--accent);color:#fff;font-size:13px;font-weight:600;white-space:nowrap">Copy link</button>
         </div>
         <div style="font-size:11.5px;color:var(--faint);line-height:1.5;padding:0 2px">{{ shareHostNote }}</div>
+        <sc-if value="{{ canRepublish }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ republish }}" title="Send the current version of this page to the published copy" style="height:32px;border-radius:4px;border:1px solid var(--border);font-size:12.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover);color:var(--text)">Update the published copy</button>
+        </sc-if>
         <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid var(--border);border-radius:6px">
           <span style="font-size:15px">🔒</span>
           <div style="flex:1;min-width:0">
             <div style="font-size:13.5px;font-weight:600">Require a password</div>
             <sc-if value="{{ pwOn }}" hint-placeholder-val="{{ false }}">
-              <input value="{{ pwVal }}" onChange="{{ setPw }}" placeholder="Set a password" style="margin-top:6px;width:100%;height:32px;border-radius:5px;border:1px solid var(--border);background:var(--canvas);padding:0 10px;font-size:13px;outline:none" />
+              <input value="{{ pwVal }}" onChange="{{ setPw }}" onBlur="{{ commitPw }}" placeholder="Set a password" style="margin-top:6px;width:100%;height:32px;border-radius:5px;border:1px solid var(--border);background:var(--canvas);padding:0 10px;font-size:13px;outline:none" />
             </sc-if>
+            <div style="font-size:11.5px;color:var(--faint);margin-top:5px;line-height:1.5">{{ pwNote }}</div>
           </div>
           <button onClick="{{ togglePw }}" style="width:42px;height:24px;flex:none;border-radius:20px;background:{{ pwTrack }};position:relative;transition:background .15s">
             <span style="position:absolute;top:3px;left:{{ pwKnob }};width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .15s"></span>
@@ -1842,7 +1915,8 @@ class Component extends DCLogic {
     expanded: { p_home: true, p_notes: true },
     focusId: null, hoverId: null, dragId: null, dropId: null,
     panel: null, modal: null, sheet: null, menu: null, slash: null,
-    dbView: {}, roVersion: null, toast: null,
+    dbView: {}, dbQuery: {}, roVersion: null, toast: null, cellEdit: null,
+    pubSlug: null, pubDoc: null, pubLoading: false, pubLocked: false, pubMissing: false,
     diffA: null, diffB: 'current', diffMode: 'split',
     isMobile: false, sidebarOpen: true, search: '', kbOpen: false
   };
@@ -1871,6 +1945,16 @@ class Component extends DCLogic {
     this._onKey = (e) => {
       const k = e.key.toLowerCase();
       const sel = this.state.blockSel || [];
+      /* A press inside a form field belongs to that field. The page body used
+         to be contentEditable blocks and nothing else, so this listener could
+         treat every keystroke as the page's — then the table grew editable
+         cells and a find box, and ⌘A inside one of them selected every BLOCK
+         on the page instead of the text in the field. The next character then
+         replaced those blocks, taking the database block with them, and the
+         table itself was collected as unreachable. The shortcuts that are
+         genuinely global (Escape, ⌘K, undo) still run; the ones that act on a
+         block selection do not. */
+      const inField = !!(e.target && e.target.closest && e.target.closest('input,textarea,select'));
       if ((e.metaKey || e.ctrlKey) && k === 'k') { e.preventDefault(); this.openSearch(); return; }
       if ((e.metaKey || e.ctrlKey) && k === 'z' && this.state.route === 'app' && !this.state.modal) {
         e.preventDefault(); e.shiftKey ? this.redo() : this.undo(); return;
@@ -1879,13 +1963,13 @@ class Component extends DCLogic {
       /* Once a selection has crossed into whole-block mode nothing is
          focused, so the block's own key handler is out of the picture and
          growing the range is this listener's job. */
-      if (sel.length && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey &&
+      if (!inField && sel.length && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey &&
           (e.key === 'ArrowUp' || e.key === 'ArrowDown') && this.state.route === 'app') {
         e.preventDefault();
         this.growBlockSel(e.key === 'ArrowUp' ? -1 : 1);
         return;
       }
-      if ((e.metaKey || e.ctrlKey) && k === 'x' && sel.length > 1) {
+      if (!inField && (e.metaKey || e.ctrlKey) && k === 'x' && sel.length > 1) {
         const blocks = sel.map(id => { const f = this.locate(id); return f && f.block; }).filter(Boolean);
         navigator.clipboard.writeText(AMD.toMarkdown(blocks, { pages: this.state.pages, dbs: this.state.dbs }));
         e.preventDefault();
@@ -1900,12 +1984,12 @@ class Component extends DCLogic {
       if (e.key === 'Escape') {
         if (this.state.slash) this.clearTrigger(this.state.slash.id);
         const wasPlain = !this.state.modal && !this.state.menu && !this.state.slash && !this.state.sheet;
-        this.setState({ modal: null, menu: null, slash: null, sheet: null, blockSel: [], selBar: null });
+        this.setState({ modal: null, menu: null, slash: null, sheet: null, blockSel: [], selBar: null, cellEdit: null });
         if (wasPlain && this.state.focusMode) this.setState({ focusMode: false });
         return;
       }
       /* typing with a multi-block selection replaces it */
-      if (sel.length > 1 && e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (!inField && sel.length > 1 && e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         const ch = e.key;
         const nb = { id: uid('b'), type: 'p', text: ch, indent: 0 };
@@ -1919,7 +2003,7 @@ class Component extends DCLogic {
         setTimeout(() => { const q = this._els[nb.id]; if (q) { q.focus(); setCaret(q, 1); } }, 30);
         return;
       }
-      if ((e.metaKey || e.ctrlKey) && k === 'a' && this.state.route === 'app') {
+      if (!inField && (e.metaKey || e.ctrlKey) && k === 'a' && this.state.route === 'app') {
         if (this._allOnce || !this.state.focusId) {
           e.preventDefault(); this._allOnce = false;
           const ids = this.flat().map(r => r.id);
@@ -1928,7 +2012,7 @@ class Component extends DCLogic {
         } else { this._allOnce = true; clearTimeout(this._allT); this._allT = setTimeout(() => { this._allOnce = false; }, 1500); }
         return;
       }
-      if ((e.key === 'Backspace' || e.key === 'Delete') && sel.length > 1) {
+      if (!inField && (e.key === 'Backspace' || e.key === 'Delete') && sel.length > 1) {
         e.preventDefault();
         this.mutate(bs => {
           sel.forEach(id => { const f = this.locate(id, bs); if (f) f.list.splice(f.i, 1); });
@@ -1940,6 +2024,9 @@ class Component extends DCLogic {
     window.addEventListener('keydown', this._onKey);
     this._onDown = (e) => {
       if (this.state.menu && !e.target.closest('[data-menu]')) this.setState({ menu: null });
+      /* a table cell being typed into closes when the press lands elsewhere —
+         its own blur commits, so this only tidies the state */
+      if (this.state.cellEdit && !e.target.closest('[data-dbcell]')) this.setState({ cellEdit: null });
       if ((this.state.blockSel || []).length && !e.target.closest('[data-block]')) this.setState({ blockSel: [] });
       /* a press starts a new selection wherever it lands: the old anchor and
          moving end describe a range that no longer exists */
@@ -2029,7 +2116,7 @@ class Component extends DCLogic {
       const data = loaded && loaded.pages ? loaded : seed;
       const user = AStore.user;
       this.setState(st => ({
-        ready: true, pages: data.pages, dbs: data.dbs || {},
+        ready: true, pages: data.pages, dbs: this.normAllDbs(data.dbs || {}),
         pageId: this.resolvePageId(data.pages, st.pageId),
         prefs: Object.assign({ theme: this.props.startTheme || 'light', fullWidth: false, sourceView: false, sidebarW: 264 }, data.prefs || {}, this.props.startTheme ? { theme: this.props.startTheme } : {}),
         invites: data.invites || [],
@@ -2041,9 +2128,17 @@ class Component extends DCLogic {
         route: (user || (AStore.mode === 'local' && this.props.startSignedIn !== false)) ? 'app' : 'auth'
       }), () => {
         this.applyTheme(); this.syncDom();
+        /* A published link is a whole session on its own: no workspace, no
+           account, one read. Answer it before anything else touches the app. */
+        const slug = this.publicSlugFromUrl();
+        if (slug) { this.openPublic(slug); return; }
         if (this.state.pageId) this.ensureBody(this.state.pageId);
         /* boot resolves the first page without going through openPage */
         this.syncVersionMeta();
+        /* any table whose rows are already in hand — the demo adapter has all
+           of them, a warm cache has some — can repair its row pages now rather
+           than waiting to be opened */
+        this.repairAllRowPages();
       });
     };
     /* B14 — surface the save state next to the breadcrumb */
@@ -2076,12 +2171,14 @@ class Component extends DCLogic {
           pages[st.pageId] = mine;
         }
         const pageId = this.resolvePageId(pages, st.pageId, true);
-        return { pages, pageId, dbs: remote.dbs || st.dbs, prefs: remote.prefs || st.prefs,
+        return { pages, pageId, dbs: remote.dbs ? this.normAllDbs(remote.dbs) : st.dbs, prefs: remote.prefs || st.prefs,
                  workspace: remote.workspace || st.workspace, invites: remote.invites || st.invites };
       }, () => {
         if (this.state.pageId) this.ensureBody(this.state.pageId);
         /* a delta can re-point pageId at a page openPage never ran for */
         this.syncVersionMeta();
+        /* a delta can also be the first time a table's rows are in hand */
+        this.repairAllRowPages();
       });
     };
     /* A migration that fails must never look like an empty account — that is

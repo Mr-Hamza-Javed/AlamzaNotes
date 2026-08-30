@@ -17,6 +17,13 @@ can be edited on its own; the app picks it up on reload.
 
 **To add a method,** put it in the part that owns the area and nowhere else.
 
+**Pick a name no other part has taken.** Every part is folded onto the SAME
+prototype, so two parts defining `foo()` means one of them silently disappears
+and which one survives depends on `<script>` order. `AlamzaParts` now warns on
+the console when a name is claimed twice, naming both files — a database helper
+called `editText` had already replaced the editor's, which would have stopped
+typing in a block working at all.
+
 **Method syntax inside a part is the same as inside a class.** A part is written
 as an anonymous class for exactly that reason:
 
@@ -41,23 +48,23 @@ template itself.
 
 | File | Lines | What it owns |
 | --- | ---: | --- |
-| `lib/part-data.js` | 269 | Reading and writing state safely |
-| `lib/part-editor.js` | 655 | The typing surface |
-| `lib/part-pages.js` | 273 | Moving between pages, and the page tree |
-| `lib/part-versions.js` | 374 | Snapshots, diff and restore |
-| `lib/part-blocks.js` | 250 | Block structure |
-| `lib/part-database.js` | 521 | Tables |
-| `lib/part-drag.js` | 333 | Dragging |
-| `lib/part-tools.js` | 810 | Everything else the page needs |
-| `lib/part-menus.js` | 1250 | What menus, modals and sheets contain |
-| `lib/part-render.js` | 595 | What the template receives |
+| `lib/part-data.js` | 338 | Reading and writing state safely |
+| `lib/part-editor.js` | 1091 | The typing surface |
+| `lib/part-pages.js` | 389 | Moving between pages, and the page tree |
+| `lib/part-versions.js` | 373 | Snapshots, diff and restore |
+| `lib/part-blocks.js` | 278 | Block structure |
+| `lib/part-database.js` | 1154 | Tables |
+| `lib/part-drag.js` | 368 | Dragging |
+| `lib/part-tools.js` | 1285 | Everything else the page needs |
+| `lib/part-menus.js` | 1469 | What menus, modals and sheets contain |
+| `lib/part-render.js` | 705 | What the template receives |
 | `index.dc.html` | 2114 | template + state, lifecycle, persist |
 
 ## Method index
 
 Grep this instead of the codebase.
 
-**`lib/part-data.js`** — `page`, `resolvePageId`, `dbFor`, `activeBlocks`, `bodyReady`, `ensureBody`, `ensureBodies`, `needParent`, `digestMap`, `digestFor`, `rowsReady`, `ensureRows`, `dbIdsIn`, `ensureRowsFor`, `myRole`, `canEdit`, `canComment`, `isReadOnly`, `patchPage`, `setBlocks`, `locate`, `miniRow`, `mutate`, `_mutate`
+**`lib/part-data.js`** — `page`, `resolvePageId`, `dbFor`, `activeBlocks`, `bodyReady`, `ensureBody`, `ensureBodies`, `needParent`, `digestMap`, `digestFor`, `rowsReady`, `ensureRows`, `repairRowPages`, `repairAllRowPages`, `dbIdsIn`, `ensureRowsFor`, `myRole`, `canEdit`, `canComment`, `isReadOnly`, `patchPage`, `setBlocks`, `locate`, `miniRow`, `mutate`, `_mutate`
 
 **`lib/part-editor.js`** — `nearView`, `syncDom`, `blockHtml`, `elRef`, `mathRef`, `gutRef`, `paintGutter`, `afterEdit`, `highlightNow`, `codeEdit`, `setCodeText`, `readBlock`, `editText`, `selectBlockRange`, `growBlockSel`, `onInput`, `caretRect`, `clearTrigger`, `insertMention`, `tryShortcut`, `insertAfter`, `removeBlock`, `onKey`, `wrapSel`, `onPaste`, `onFocus`, `onBlur`
 
@@ -67,11 +74,11 @@ Grep this instead of the codebase.
 
 **`lib/part-blocks.js`** — `moveBlock`, `startDrag`, `turnInto`, `duplicateBlock`, `insertOfType`, `slashKey`, `slashCatalog`, `mentionCatalog`
 
-**`lib/part-database.js`** — `chipColor`, `cellText`, `dbRowVals`, `openRowPage`, `propFields`, `normProp`, `normDb`, `optOf`, `optStyle`, `addProp`, `renameProp`, `retypeProp`, `deleteProp`, `duplicateProp`, `moveProp`, `addOption`, `renameOption`, `recolorOption`, `deleteOption`, `moveOption`, `isHiddenInView`, `toggleViewProp`, `togglePageProp`, `toggleProp`, `moveRow`, `flipRows`, `dbBleed`, `applyRowDrop`, `setRowGroup`
+**`lib/part-database.js`** — `chipColor`, `cellText`, `cellRaw`, `isBlank`, `dateNum`, `isDateType`, `stampRows`, `boardGroupProp`, `groupVals`, `boardGroups`, `filterOps`, `matchFilter`, `applyFilters`, `cmpCells`, `sortRows`, `dbRowVals`, `typableProp`, `stepCell`, `openRowPage`, `collectDatabases`, `dbReferenced`, `dropDatabases`, `deleteDatabase`, `cleanUnusedTables`, `addRow`, `deleteRow`, `setCell`, `coerceCell`, `toggleOption`, `knownPeople`, `propFields`, `normProp`, `normDb`, `optOf`, `optStyle`, `addProp`, `renameProp`, `retypeProp`, `deleteProp`, `duplicateProp`, `moveProp`, `addOption`, `renameOption`, `recolorOption`, `deleteOption`, `moveOption`, `isHiddenInView`, `toggleViewProp`, `togglePageProp`, `toggleProp`, `moveRow`, `flipRows`, `dbBleed`, `applyRowDrop`, `setRowGroup`
 
 **`lib/part-drag.js`** — `rowGrab`, `patchDb`
 
-**`lib/part-tools.js`** — `readHtml`, `histFor`, `histJson`, `syncTail`, `applyHist`, `undo`, `redo`, `isAncestor`, `repair`, `mergePrev`, `removeAt`, `caretX`, `caretToX`, `applyMark`, `setBlockColor`, `openSearch`, `flashBlock`, `changedIds`, `tableEdit`, `tableAdd`, `tableDel`, `commentCount`, `addComment`, `resolveComment`, `origin`, `pageUrl`, `shareUrl`, `inviteUrl`, `sendInvite`, `answerInvite`, `iconEl`, `childrenOf`, `reconcileChildren`, `stripSubpage`, `movePage`, `navGrab`, `startResize`, `deepDuplicatePage`, `lassoStart`, `trackAnchor`, `pageStats`, `headingHits`, `tableNav`, `upModal`
+**`lib/part-tools.js`** — `readHtml`, `histFor`, `histJson`, `syncTail`, `applyHist`, `undo`, `redo`, `isAncestor`, `repair`, `mergePrev`, `removeAt`, `caretX`, `caretToX`, `applyMark`, `setBlockColor`, `openSearch`, `flashBlock`, `changedIds`, `tableEdit`, `tableAdd`, `tableDel`, `commentCount`, `addComment`, `resolveComment`, `origin`, `pageUrl`, `shareUrl`, `inviteUrl`, `publishSnapshot`, `setPublished`, `republish`, `openPublic`, `publicSlugFromUrl`, `sendInvite`, `invitedMe`, `answerInvite`, `iconEl`, `childrenOf`, `reconcileChildren`, `stripSubpage`, `movePage`, `navGrab`, `startResize`, `deepDuplicatePage`, `lassoStart`, `trackAnchor`, `pageStats`, `headingHits`, `tableNav`, `upModal`
 
 **`lib/part-menus.js`** — `extraVals`
 

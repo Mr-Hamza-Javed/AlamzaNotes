@@ -487,6 +487,15 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
 - **Multi-block selection** — lasso from the gutter beside the text, `⌘A`
   twice for the page, or `⇧↑/↓` out of a block.
 
+  **None of these fire inside a form field.** The page body was contenteditable
+  blocks and nothing else, so the window key handler could treat every
+  keystroke as the page's; then the table grew editable cells and a find box.
+  `⌘A` inside one of them selected every BLOCK on the page instead of the text
+  in the field, and the next character replaced those blocks — taking the
+  database block with them, after which the table itself was collected as
+  unreachable. Escape, `⌘K` and undo are still global; the ones that act on a
+  block selection now stand down for `input`, `textarea` and `select`.
+
   A selection cannot simply *grow* out of its block: each block is its own
   contenteditable element, two of those are two editing hosts, and no browser
   selection spans them — `⇧↓` used to call `focus()` on the next block, which
@@ -594,6 +603,9 @@ workspaces/<uid>/
   vmeta/<pageId>          snapshot metadata (incl. precomputed +/− stat)
   vdata/<pageId>/<vId>    snapshot bodies  · write-once, cold
   dbs/<dbId>              — removed; replaced by dbmeta + dbrow
+
+pub/<slug>                a published page, world-readable, owner-writable
+                          — a self-contained copy, outside the workspace
 ```
 
 ### The five rules
@@ -671,6 +683,29 @@ the ping, and refetches **only the named row** — or, if several rows moved,
 drops its row cache and reloads on next view. Row *order* lives in `dbmeta.o`
 as an array of ids, so a drag-reorder is one small write and the rows
 themselves never move.
+
+**A deleted row needs a tombstone, not an inference.** Deletions used to be
+inferred from `sent.dbrow` — the rows this session had itself uploaded — so
+deleting a row that had not been edited since the page loaded left its node on
+the server. `dbmeta.o` lost the id, but `fromDbMeta()` deliberately re-appends
+any row present in the node and missing from the order (that is what protects
+the manual order during migration), so the row reappeared at the bottom of the
+table on the next cold load. `putRows()` is the moment a deletion is observable
+— it holds both the previous row list and the new one — so it records the
+missing ids, and `push()` nulls those paths whether or not the row was ever
+sent. A row that comes back before the push, from an undo, clears its own
+tombstone; a push that fails keeps it for the next one.
+
+**Deleting a whole table is the one operation `push()` cannot express.** Its
+deletion path only nulls ids present in `sent.dbmeta`, and that map is empty
+after any reload, so an unreferenced table survived forever — and `dbmeta` is
+subscribed, so it was re-downloaded on every boot. `AStore.purgeDatabases()`
+removes the whole subtree, and three things call it: the **Delete database**
+menu item, the collector that runs whenever a `database` block is removed by
+any route (every one funnels through `mutate()`), and **Clean up unused
+tables** in Settings → Data & sync for tables orphaned before either existed.
+The sweep must read every body first — including trashed pages, which can be
+restored — and says so rather than guessing if any body fails to load.
 
 ### Caching
 
@@ -911,12 +946,48 @@ Table, Board (grouped by a select property)**. View switcher tabs + `+ New`.
 Property types: text, select, multi-select, date, checkbox, person, number.
 Filter and sort controls per view. Rows open as pages.
 
+**Cells are edited in the table, not only on the row page.** A checkbox toggles
+on click; a select, status, multi-select or person cell opens its option picker
+over itself (a multi-select's stays open so several can be picked, and a name
+typed into it becomes a new option); everything else becomes an input. `Enter`
+commits, `Escape` abandons, `Tab` moves to the next cell that can be typed
+into — skipping the pickers and checkboxes, which are click targets, and
+wrapping to the next row. The automatic types stay read-only, because they are
+facts rather than fields. Pressing on a cell still starts a row drag, so only a
+press that never moved opens an editor.
+
+**Filtering understands every property, and the conditions read the way they
+look.** Within one property they are OR'd — two chips of the same select mean
+"either" — and across properties they are AND'd. Values are compared by TYPE,
+so an untouched checkbox counts as unchecked. Beyond equality: *contains* for
+text, `= > <` for numbers, *before* / *after* for dates, and *is empty* /
+*is not empty* everywhere. A filter naming a property that no longer exists is
+inert rather than fatal.
+
+**Sorting is stable, type-aware and multi-key.** Blanks sink to the bottom in
+both directions; text compares case- and accent-insensitively with numeric
+runs in order (`9` before `10`); a select or status sorts in the order its
+options are listed rather than alphabetically. Clicking a second property adds
+a tie-breaker rather than replacing the first. A sorted view cannot be
+drag-reordered — the view renders its own order, so the drag would be
+discarded — and says so rather than appearing to do nothing.
+
 ### 7.1 Properties — the full Notion model
 
 **Shape.** `prop = { id, name, type, options[] }`, where an option is
 `{ id, name, color }`. Options own their colour, are renamed / recoloured /
-reordered in place, and renaming one rewrites every row that used it. Databases
-that stored options as plain strings are upgraded on read.
+reordered in place, and renaming one rewrites every row that used it.
+
+**Databases that stored options as plain strings are upgraded when they load** —
+`normAllDbs()` runs over `state.dbs` at boot and on every remote delta. That was
+the intent all along, but `normDb()` had no callers, so a table healed only when
+some menu happened to run `normProp()` over one of its properties. Until then
+the board read `.name` off a string and got `undefined`: it drew a nameless,
+empty column for every option and pushed the real values into stray columns
+beside them, and every chip fell back to the default colour. The demo workspace
+shipped in exactly that state. The readers are defensive as well as migrated —
+`optName()` accepts either shape — so a table that has not been through the
+migration yet still groups and colours correctly.
 
 **Types.** Basic — Text, Number, Select, Multi-select, Status, Date, Person,
 Checkbox, URL, Email, Phone. Automatic — Created time, Created by, Last edited
@@ -933,9 +1004,49 @@ property is always first and can never be retyped or deleted.
    an inline option list: colour swatch (opens the ten-colour picker), editable
    name pill, reorder arrows, delete, and a "type a name, press Enter" row.
 
-**Retyping keeps data usable** — converting to select/multi-select/status seeds
-the option list from the values already present; single ⇄ multi converts
-scalar ⇄ array; number coerces.
+**Person is an option type**, like select — it carries a named, coloured,
+reorderable list. It was left out of that set, which made it the one type the
+reader could create but never fill in: the editor only offers an option list
+for the option types, so the property had no way to gain a name while the row
+page still drew it as an (empty) picker. A new Person property is seeded with
+the people the workspace already knows.
+
+**The four automatic types carry real data.** `createdAt` / `createdBy` are
+written once when a row is made; `updatedAt` / `editedBy` follow every edit.
+The stamping lives in `patchDb` — the funnel every deliberate table edit goes
+through — rather than at each call site, which is how it came to be missing
+everywhere at once. A row is stamped only if the mutation actually changed it,
+so reordering rows moves no timestamps. Authorship is never guessed from
+whoever happens to be reading: unknown reads as "—".
+
+**A cell is edited in the table.** Click to toggle a checkbox, to open a
+picker, or to type; `Enter` commits, `Escape` abandons, `Tab` walks to the next
+**typable** cell (pickers and checkboxes are click targets, so Tab passes over
+them) and wraps at the end of a row. The field is controlled, so keystrokes
+live in `cellEdit.draft` until it commits.
+
+**Nothing is written unless a keystroke actually landed.** `cellEdit.dirty` is
+set by the field's own `onChange` and checked on blur. Committing whatever the
+field happened to hold was harmless for text and destructive for a date:
+`<input type="date">` renders anything it cannot parse as EMPTY, so merely
+clicking a date cell that held prose — a column retyped from text, an import —
+and clicking away saved that emptiness over the real value. A blur that arrives
+after `Tab` has moved the editor on is likewise ignored, so the field that is
+going away cannot write into its successor.
+
+**A date is stored as `YYYY-MM-DD`, edited as `YYYY-MM-DD`, and read as a
+date.** `dateInput()` normalises whatever arrives — a day, a timestamp, an ISO
+datetime — for the editor and for storage; `fmtDate()` formats it for display,
+reading the UTC fields and rebuilding a local date so a day never slips to the
+one before it west of Greenwich. Text that is not a date at all is kept and
+shown as it stands rather than blanked.
+
+**Retyping keeps data usable** — converting to an option type seeds the list
+from the values already present; single ⇄ multi converts scalar ⇄ array;
+number coerces. Shape is converted before type, not in the same if/else chain:
+sharing one chain meant an array took the "collapse to the first value" branch
+and never reached the number branch, so multi-select → number left every cell a
+string that then sorted lexicographically.
 
 **Visibility is per view *and* per page.** A view hides properties through its
 own `hidden[]`; the page hides them through `pageHidden[]`. Both are reachable
@@ -966,6 +1077,41 @@ committed drop is the index the indicator was showing, and Escape cancels.
 
 ### 7.2 Database chrome
 
+- **A find box** sits in the toolbar. It is not a filter: it narrows what you
+  are looking at right now, searches the columns the view actually shows, and
+  is never written to the table — a filter is part of the view, shared with
+  everyone who opens it, and a find is nobody's but yours.
+- **The count says how many of how many.** "3 items" while a filter or a find
+  is hiding nine of them is a lie by omission, so a narrowed view reads
+  "3 of 12".
+- **An empty view says which kind of empty it is.** A table nobody has added
+  to, a find that matched nothing, and filters that hide every row are three
+  different situations that all used to render as blank space. Each gets its
+  own sentence and the one button that resolves it — add a row, clear the
+  find, clear the filters. A board is exempt: its columns are the answer.
+- **A row added from a view belongs to that view.** `filterSeed()` pre-fills
+  the conditions that name a value (`is`, `contains`, a checkbox) so the row
+  you just made is a row you can see; a board column adds its own value on top.
+  Conditions nothing can satisfy — `is not`, `is empty`, the ranges — are left
+  alone, and if the view still hides the row it says so rather than leaving the
+  reader to wonder where it went. A new row's title starts EMPTY and displays
+  as "Untitled"; seeding the literal word only meant select-all-and-delete
+  before you could type a name.
+- **Columns sort from their own header** — the property menu the header opens
+  carries `A → Z` / `Z → A` (dated and numeric columns say so in their own
+  terms), keeping the view's other sort keys, and the header itself shows ↑/↓
+  for the column that is sorted. The toolbar's Sort button lit up but the
+  column never said which one it meant.
+- **Columns are resizable, per view.** Drag the seam between two headers; the
+  width is painted straight onto the DOM while the pointer moves (a `setState`
+  per pixel would re-render every row) and written to the view once, on
+  release, so it survives a reload. It is stored on the view rather than the
+  table because two views of one table are two different things to look at.
+  Resizing is not an edit `⌘Z` should have to walk back through, so it files no
+  history step.
+- **The table and the list carry a `＋ New` at the foot**, the way Notion's do
+  — the only way to add a row used to be the button at the top. It is hidden
+  when the empty-state panel is showing, which carries the same action.
 - **Name and icon** are editable from the database header — click the icon for
   the emoji picker, click the name for the settings menu.
 - **Views**: a `＋` adds one; double-click or right-click a tab to rename it,
@@ -973,14 +1119,36 @@ committed drop is the index the indicator was showing, and Escape cancels.
   delete it. The default view is starred and is the one that opens.
 - **Database settings** carry **Start with properties collapsed**, so new row
   pages open folded (the default) without folding each one by hand.
-- **Filter** is grouped by property with real colour chips, and understands
-  checkbox properties. **Sort** offers Manual plus per-property asc/desc.
+- **Filter** is grouped by property with real colour chips for the option
+  types, and an operator + value row for everything else. **Sort** offers
+  Manual plus per-property asc/desc, and stacks keys in the order they were
+  picked.
+- **A board column is identified by its VALUE, not its caption.** The empty
+  column used to be recognised by parsing "No " off the front of its label,
+  which a property genuinely named "No Status" would have broken. Every column
+  also carries a ＋ that adds a card already belonging to it, rather than one
+  that lands in "No …" and has to be dragged out.
+- **Nothing disappears from a board.** Grouping resolves against all of the
+  table's properties, not just the visible ones, so hiding the group-by column
+  no longer makes the board and the drop handler disagree about which property
+  they are writing. A value that is set but is not one of the options gets a
+  column of its own — it used to match no column at all and simply not be
+  drawn. A multi-select board groups by membership, and dropping a card moves
+  the one tag rather than replacing the whole list.
 - **Duplicating** a page that holds a database clones the database whole: new
   database id, new view ids, new row ids, and every row page that had been
   opened is cloned and re-pointed — two fully independent copies.
 - **A version of the page is a version of the data.** Snapshots store the
   embedded databases too, and previewing an old version reads that snapshot's
   rows rather than the live table.
+- **A refusal explains itself.** Deleting the title property was offered,
+  did nothing, and said nothing; it now says why. (The title is always the
+  first property, so it is also the only way a table could be reduced to none.)
+- **Deleting a table** is offered in the database settings menu, behind a
+  confirmation that names the row count and how many row pages will move to
+  the Trash. `⌘Z` puts back all three of its parts — the block, the table and
+  its rows, and the row pages — because a half-restored table would leave rows
+  pointing at pages the reader can only open read-only.
 
 ### 7.3 A row is a note
 
@@ -989,11 +1157,70 @@ version history and sharing. Properties sit in a list under the title and the
 title syncs back to the database. Row pages are excluded from the sidebar tree
 (they belong to their database) but appear in breadcrumbs.
 
+**A row and its page are one object, and neither half can be destroyed alone.**
+Deleting a row and trashing its page from the page's own ⋯ menu are the same
+operation: the row leaves the table, the page goes to the Trash, and the page
+carries a copy of the row (`dbRowBackup`) so that restoring it puts the row
+back at the index it came from. A row page whose table has since been deleted
+restores as an ordinary visible page rather than as a hidden one nothing can
+open. Row pages swept up as descendants of a trashed HOST page are not treated
+this way — the whole table is going to the Trash with the host and has to come
+back whole.
+
+**The index carries everything a row page cannot rebuild** — `dbRef`, `hidden`
+and `propsCollapsed` alongside the ordinary page fields. They are one or two
+bytes each and written only when set. Omitting them cost more than it saved:
+a row page came back from a reload as an ordinary page, lost its properties
+panel and its title mirroring, appeared in the sidebar, and — because
+`reconcileChildren()` saw a visible child with no sub-page block — had a link
+to itself appended to the body of the page holding its table, on every reload.
+A workspace stored under the older format is repaired as each table's rows
+arrive: the row still remembers its page in `row.pageId`, so `repairRowPages()`
+puts back what the page forgot, and `reconcileChildren()` additionally refuses
+to treat any page a loaded row claims as an orphan.
+
 ## 8. Sharing
 
 - **Publish to web** — read-only public reader view with its own clean layout.
 - **Invite by email** with roles: viewer / commenter / editor.
 - **Link with password** option on published links.
+
+### 8.1 What a published page actually is
+
+A published page is a **copy**, written to `pub/<slug>` — a node the security
+rules make world-readable and owner-writable. The workspace itself stays
+exactly as private as it was: this adds somewhere to put a copy rather than
+opening a door into the original. `workspaces/<uid>` is still readable and
+writable only by `auth.uid === $uid`, and a slug already claimed cannot be
+overwritten by anyone but the account that wrote it.
+
+The copy is **self-contained** — title, icon, blocks and every table those
+blocks embed — because a visitor has no account and no way to fetch a body or
+a row set on demand. It is a snapshot: editing the page afterwards does not
+change what visitors see until *Update the published copy*.
+
+**The link is `#/s/<slug>`**, a route the app answers. It used to be
+`<origin>/s/<slug>`, a path nothing served, so every "public link" the app
+produced was a 404.
+
+**A password link is encrypted, not gated.** Asking for a password in the
+reader would be theatre: the node is world-readable, so anyone could fetch the
+body and skip the prompt. The payload is sealed with AES-GCM under a key
+derived from the password (PBKDF2-SHA256, 150k rounds, fresh salt and IV per
+publish), so the stored bytes are unreadable without it. A wrong password
+fails authentication and returns nothing rather than plausible rubbish.
+
+Publishing marks the page published only once the write has landed, and demo
+mode says plainly that its link works in that browser only rather than
+implying a public URL.
+
+**An invite is addressed.** One array holds both the invites an account sent
+and the ones it received, so without a recipient an owner who invited a viewer
+and then accepted their own invitation from their own inbox became a viewer of
+their own page, unable to edit it. `invitedMe()` decides, and an invite with no
+recipient recorded cannot lower anyone's role. Cross-account delivery still
+needs a backend; until then the invite list is local to the workspace that
+wrote it.
 - **Presence**: "who's viewing" avatars + `Last edited by X · time`.
 - **Copy link** button on desktop; native-style **share sheet** on mobile.
 
@@ -1004,7 +1231,7 @@ Full-page settings with sections: **Account** (Google sign-in/out, profile),
 (source view default, spellcheck, small text), **Versions** (auto-version
 interval, retention), **Data & sync** (adapter status: Firebase vs Demo,
 project id, **Leave the demo and sign in with Google**, export JSON / export
-Markdown, import), **Shortcuts**, **About**.
+Markdown, import, **Clean up unused tables**), **Shortcuts**, **About**.
 
 ### 9.1 Sign-in screen
 
