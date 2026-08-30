@@ -943,12 +943,18 @@ button:active{transform:scale(.985);opacity:.85}
       <button onClick="{{ closePanel }}" style="width:28px;height:28px;border-radius:4px;display:grid;place-items:center;color:var(--muted);font-size:15px" style-hover="background:var(--hover);color:var(--text)">✕</button>
     </div>
     <div style="padding:12px;border-bottom:1px solid var(--border)">
-      <button onClick="{{ openNewVersion }}" style="width:100%;height:36px;border-radius:5px;background:var(--accent);color:#fff;font-weight:600;font-size:13.5px;display:flex;align-items:center;justify-content:center;gap:7px">
-        <span style="font-size:15px">+</span><span>New version</span>
+      <button onClick="{{ openNewVersion }}" disabled="{{ newVersionOff }}" style="width:100%;height:36px;border-radius:5px;background:{{ newVersionBg }};color:{{ newVersionColor }};font-weight:600;font-size:13.5px;display:flex;align-items:center;justify-content:center;gap:7px">
+        <span style="font-size:15px">+</span><span>{{ newVersionLabel }}</span>
       </button>
-      <div style="margin-top:8px;font-size:11.5px;color:var(--faint);line-height:1.5">Snapshots the current page. The message you write describes the state being closed.</div>
+      <div style="margin-top:8px;font-size:11.5px;color:var(--faint);line-height:1.5">Snapshots this page and everything under it — its sub-pages and the tables they embed. The message you write describes the state being closed.</div>
     </div>
     <div style="flex:1;overflow-y:auto;padding:8px">
+      <sc-if value="{{ versionsLoading }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:9px;padding:22px 12px">
+          <span style="flex:none;width:12px;height:12px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--accent);animation:aSpin .7s linear infinite"></span>
+          <span style="font-size:12.5px;color:var(--muted)">Loading this page's history…</span>
+        </div>
+      </sc-if>
       <sc-for list="{{ versionList }}" as="v" hint-placeholder-count="3">
         <div onClick="{{ v.select }}" onContextMenu="{{ v.context }}" style="position:relative;padding:10px 10px 10px 30px;border-radius:5px;cursor:pointer;background:{{ v.bg }};border:1px solid {{ v.bd }};margin-bottom:4px" style-hover="background:var(--hover)">
           <span style="position:absolute;left:13px;top:15px;width:9px;height:9px;border-radius:50%;background:{{ v.dot }};box-shadow:0 0 0 3px var(--surface)"></span>
@@ -1820,9 +1826,15 @@ button:active{transform:scale(.985);opacity:.85}
 
     <sc-if value="{{ sheetIsVersions }}" hint-placeholder-val="{{ false }}">
     <div style="padding:0 16px 12px;flex:none">
-      <button onClick="{{ openNewVersion }}" style="width:100%;height:48px;border-radius:6px;background:var(--accent);color:#fff;font-weight:600;font-size:15px">＋ New version</button>
+      <button onClick="{{ openNewVersion }}" disabled="{{ newVersionOff }}" style="width:100%;height:48px;border-radius:6px;background:{{ newVersionBg }};color:{{ newVersionColor }};font-weight:600;font-size:15px">＋ {{ newVersionLabel }}</button>
     </div>
     <div style="flex:1;overflow-y:auto;padding:0 12px 20px">
+      <sc-if value="{{ versionsLoading }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:10px;padding:26px 12px">
+          <span style="flex:none;width:14px;height:14px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--accent);animation:aSpin .7s linear infinite"></span>
+          <span style="font-size:14px;color:var(--muted)">Loading this page's history…</span>
+        </div>
+      </sc-if>
       <sc-for list="{{ versionList }}" as="v" hint-placeholder-count="3">
         <div style="position:relative;padding:12px 12px 12px 30px;border-radius:6px;background:{{ v.bg }};margin-bottom:4px">
           <span style="position:absolute;left:12px;top:18px;width:10px;height:10px;border-radius:50%;background:{{ v.dot }}"></span>
@@ -2162,9 +2174,11 @@ class Component extends DCLogic {
           /* A delta must never shorten history. Version metadata is fetched
              separately, so an incoming page can legitimately carry a stale or
              empty list — adopting it would make a snapshot taken seconds ago
-             disappear. Longest list wins; deletion goes through its own path. */
-          const hv = (had && had.versions) || [], iv = pages[id].versions || [];
-          if (hv.length > iv.length) pages[id] = { ...pages[id], versions: hv };
+             disappear. The two lists are merged by identity (mergeVersions),
+             which is also what keeps a snapshot deleted a moment ago deleted:
+             "longest wins" put it straight back. */
+          const merged = this.mergeVersions((had && had.versions) || [], pages[id].versions || []);
+          pages[id] = { ...pages[id], versions: merged };
         });
         const mine = st.pageId && st.pages[st.pageId];
         if (mine && mine.blocks && document.activeElement && document.activeElement.isContentEditable) {
