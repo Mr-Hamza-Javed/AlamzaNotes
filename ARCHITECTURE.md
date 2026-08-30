@@ -17,6 +17,13 @@ can be edited on its own; the app picks it up on reload.
 
 **To add a method,** put it in the part that owns the area and nowhere else.
 
+**Pick a name no other part has taken.** Every part is folded onto the SAME
+prototype, so two parts defining `foo()` means one of them silently disappears
+and which one survives depends on `<script>` order. `AlamzaParts` now warns on
+the console when a name is claimed twice, naming both files — a database helper
+called `editText` had already replaced the editor's, which would have stopped
+typing in a block working at all.
+
 **Method syntax inside a part is the same as inside a class.** A part is written
 as an anonymous class for exactly that reason:
 

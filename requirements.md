@@ -487,6 +487,15 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
 - **Multi-block selection** — lasso from the gutter beside the text, `⌘A`
   twice for the page, or `⇧↑/↓` out of a block.
 
+  **None of these fire inside a form field.** The page body was contenteditable
+  blocks and nothing else, so the window key handler could treat every
+  keystroke as the page's; then the table grew editable cells and a find box.
+  `⌘A` inside one of them selected every BLOCK on the page instead of the text
+  in the field, and the next character replaced those blocks — taking the
+  database block with them, after which the table itself was collected as
+  unreachable. Escape, `⌘K` and undo are still global; the ones that act on a
+  block selection now stand down for `input`, `textarea` and `select`.
+
   A selection cannot simply *grow* out of its block: each block is its own
   contenteditable element, two of those are two editing hosts, and no browser
   selection spans them — `⇧↓` used to call `focus()` on the next block, which
@@ -967,8 +976,18 @@ discarded — and says so rather than appearing to do nothing.
 
 **Shape.** `prop = { id, name, type, options[] }`, where an option is
 `{ id, name, color }`. Options own their colour, are renamed / recoloured /
-reordered in place, and renaming one rewrites every row that used it. Databases
-that stored options as plain strings are upgraded on read.
+reordered in place, and renaming one rewrites every row that used it.
+
+**Databases that stored options as plain strings are upgraded when they load** —
+`normAllDbs()` runs over `state.dbs` at boot and on every remote delta. That was
+the intent all along, but `normDb()` had no callers, so a table healed only when
+some menu happened to run `normProp()` over one of its properties. Until then
+the board read `.name` off a string and got `undefined`: it drew a nameless,
+empty column for every option and pushed the real values into stray columns
+beside them, and every chip fell back to the default colour. The demo workspace
+shipped in exactly that state. The readers are defensive as well as migrated —
+`optName()` accepts either shape — so a table that has not been through the
+migration yet still groups and colours correctly.
 
 **Types.** Basic — Text, Number, Select, Multi-select, Status, Date, Person,
 Checkbox, URL, Email, Phone. Automatic — Created time, Created by, Last edited
@@ -999,6 +1018,28 @@ through — rather than at each call site, which is how it came to be missing
 everywhere at once. A row is stamped only if the mutation actually changed it,
 so reordering rows moves no timestamps. Authorship is never guessed from
 whoever happens to be reading: unknown reads as "—".
+
+**A cell is edited in the table.** Click to toggle a checkbox, to open a
+picker, or to type; `Enter` commits, `Escape` abandons, `Tab` walks to the next
+**typable** cell (pickers and checkboxes are click targets, so Tab passes over
+them) and wraps at the end of a row. The field is controlled, so keystrokes
+live in `cellEdit.draft` until it commits.
+
+**Nothing is written unless a keystroke actually landed.** `cellEdit.dirty` is
+set by the field's own `onChange` and checked on blur. Committing whatever the
+field happened to hold was harmless for text and destructive for a date:
+`<input type="date">` renders anything it cannot parse as EMPTY, so merely
+clicking a date cell that held prose — a column retyped from text, an import —
+and clicking away saved that emptiness over the real value. A blur that arrives
+after `Tab` has moved the editor on is likewise ignored, so the field that is
+going away cannot write into its successor.
+
+**A date is stored as `YYYY-MM-DD`, edited as `YYYY-MM-DD`, and read as a
+date.** `dateInput()` normalises whatever arrives — a day, a timestamp, an ISO
+datetime — for the editor and for storage; `fmtDate()` formats it for display,
+reading the UTC fields and rebuilding a local date so a day never slips to the
+one before it west of Greenwich. Text that is not a date at all is kept and
+shown as it stands rather than blanked.
 
 **Retyping keeps data usable** — converting to an option type seeds the list
 from the values already present; single ⇄ multi converts scalar ⇄ array;
@@ -1036,6 +1077,41 @@ committed drop is the index the indicator was showing, and Escape cancels.
 
 ### 7.2 Database chrome
 
+- **A find box** sits in the toolbar. It is not a filter: it narrows what you
+  are looking at right now, searches the columns the view actually shows, and
+  is never written to the table — a filter is part of the view, shared with
+  everyone who opens it, and a find is nobody's but yours.
+- **The count says how many of how many.** "3 items" while a filter or a find
+  is hiding nine of them is a lie by omission, so a narrowed view reads
+  "3 of 12".
+- **An empty view says which kind of empty it is.** A table nobody has added
+  to, a find that matched nothing, and filters that hide every row are three
+  different situations that all used to render as blank space. Each gets its
+  own sentence and the one button that resolves it — add a row, clear the
+  find, clear the filters. A board is exempt: its columns are the answer.
+- **A row added from a view belongs to that view.** `filterSeed()` pre-fills
+  the conditions that name a value (`is`, `contains`, a checkbox) so the row
+  you just made is a row you can see; a board column adds its own value on top.
+  Conditions nothing can satisfy — `is not`, `is empty`, the ranges — are left
+  alone, and if the view still hides the row it says so rather than leaving the
+  reader to wonder where it went. A new row's title starts EMPTY and displays
+  as "Untitled"; seeding the literal word only meant select-all-and-delete
+  before you could type a name.
+- **Columns sort from their own header** — the property menu the header opens
+  carries `A → Z` / `Z → A` (dated and numeric columns say so in their own
+  terms), keeping the view's other sort keys, and the header itself shows ↑/↓
+  for the column that is sorted. The toolbar's Sort button lit up but the
+  column never said which one it meant.
+- **Columns are resizable, per view.** Drag the seam between two headers; the
+  width is painted straight onto the DOM while the pointer moves (a `setState`
+  per pixel would re-render every row) and written to the view once, on
+  release, so it survives a reload. It is stored on the view rather than the
+  table because two views of one table are two different things to look at.
+  Resizing is not an edit `⌘Z` should have to walk back through, so it files no
+  history step.
+- **The table and the list carry a `＋ New` at the foot**, the way Notion's do
+  — the only way to add a row used to be the button at the top. It is hidden
+  when the empty-state panel is showing, which carries the same action.
 - **Name and icon** are editable from the database header — click the icon for
   the emoji picker, click the name for the settings menu.
 - **Views**: a `＋` adds one; double-click or right-click a tab to rename it,
@@ -1065,6 +1141,9 @@ committed drop is the index the indicator was showing, and Escape cancels.
 - **A version of the page is a version of the data.** Snapshots store the
   embedded databases too, and previewing an old version reads that snapshot's
   rows rather than the live table.
+- **A refusal explains itself.** Deleting the title property was offered,
+  did nothing, and said nothing; it now says why. (The title is always the
+  first property, so it is also the only way a table could be reduced to none.)
 - **Deleting a table** is offered in the database settings menu, behind a
   confirmation that names the row count and how many row pages will move to
   the Trash. `⌘Z` puts back all three of its parts — the block, the table and

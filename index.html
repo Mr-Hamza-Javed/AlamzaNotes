@@ -698,6 +698,12 @@ button:active{transform:scale(.985);opacity:.85}
                       <button onClick="{{ r.dbMenu }}" title="Rename and configure" style="font-weight:600;font-size:14px;padding:3px 6px;border-radius:4px;max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" style-hover="background:var(--hover)">{{ r.dbName }}</button>
                       <span style="font-size:12px;color:var(--faint)">{{ r.dbCount }}</span>
                       <div style="flex:1"></div>
+                      <span style="position:relative;display:flex;align-items:center">
+                        <input value="{{ r.dbQuery }}" onChange="{{ r.dbSetQuery }}" placeholder="Find…" aria-label="Find in this table" style="width:118px;height:26px;padding:0 22px 0 9px;border-radius:4px;border:1px solid {{ r.dbQueryBorder }};background:var(--canvas);color:var(--text);font-size:12px;outline:none" />
+                        <sc-if value="{{ r.dbHasQuery }}" hint-placeholder-val="{{ false }}">
+                          <button onClick="{{ r.dbClearQuery }}" title="Clear the find" style="position:absolute;right:3px;width:17px;height:17px;border-radius:3px;display:grid;place-items:center;color:var(--faint);font-size:11px" style-hover="background:var(--hover);color:var(--text)">✕</button>
+                        </sc-if>
+                      </span>
                       <button onClick="{{ r.dbAddProp }}" title="Add a property" style="height:26px;padding:0 9px;border-radius:4px;font-size:12px;color:var(--muted)" style-hover="background:var(--hover);color:var(--text)">＋ Property</button>
                       <button onClick="{{ r.dbOpenProps }}" title="Properties" style="height:26px;padding:0 9px;border-radius:4px;font-size:12px;color:var(--muted)" style-hover="background:var(--hover);color:var(--text)">Properties</button>
                       <button onClick="{{ r.dbFilter }}" style="height:26px;padding:0 9px;border-radius:4px;font-size:12px;color:{{ r.filterColor }};background:{{ r.filterBg }}" style-hover="background:var(--hover)">Filter</button>
@@ -737,6 +743,9 @@ button:active{transform:scale(.985);opacity:.85}
                             <span style="font-size:12px;color:var(--faint);white-space:nowrap">{{ row.meta }}</span>
                           </div>
                         </sc-for>
+                        <sc-if value="{{ r.dbHasRows }}" hint-placeholder-val="{{ true }}">
+                          <button onClick="{{ r.dbAddRow }}" style="width:100%;display:flex;align-items:center;gap:8px;padding:9px 14px;font-size:12.5px;color:var(--faint);border-bottom:1px solid var(--border);text-align:left" style-hover="background:var(--hover);color:var(--text)">＋ New</button>
+                        </sc-if>
                       </div>
                       </sc-if>
 
@@ -762,17 +771,21 @@ button:active{transform:scale(.985);opacity:.85}
                       <div style="min-width:640px;animation:aFade .2s ease">
                         <div style="display:flex;border-bottom:1px solid var(--border);background:var(--soft)">
                           <sc-for list="{{ r.dbProps }}" as="pr" hint-placeholder-count="5">
-                            <button onClick="{{ pr.menu }}" style="width:{{ pr.w }};flex:none;display:flex;align-items:center;gap:6px;padding:8px 12px;font-size:11.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;border-right:1px solid var(--border);text-align:left" style-hover="background:var(--hover);color:var(--text)">
-                              <span style="flex:none;opacity:.8;font-weight:400">{{ pr.glyph }}</span>
-                              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">{{ pr.name }}</span>
-                            </button>
+                            <div data-dbcol="{{ pr.id }}" style="width:{{ pr.w }};flex:none;position:relative;display:flex;align-items:stretch;border-right:1px solid var(--border)">
+                              <button onClick="{{ pr.menu }}" style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;padding:8px 12px;font-size:11.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-align:left" style-hover="background:var(--hover);color:var(--text)">
+                                <span style="flex:none;opacity:.8;font-weight:400">{{ pr.glyph }}</span>
+                                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">{{ pr.name }}</span>
+                                <span style="flex:none;color:var(--accent);font-size:11px">{{ pr.sortMark }}</span>
+                              </button>
+                              <span onMouseDown="{{ pr.resize }}" title="Drag to resize this column" style="position:absolute;top:0;right:-3px;width:7px;height:100%;cursor:col-resize;z-index:2"></span>
+                            </div>
                           </sc-for>
                           <button onClick="{{ r.dbAddProp }}" title="Add a property" style="width:44px;flex:none;display:grid;place-items:center;color:var(--faint);font-size:14px" style-hover="background:var(--hover);color:var(--text)">＋</button>
                         </div>
                         <sc-for list="{{ r.dbRows }}" as="row" hint-placeholder-count="4">
                           <div data-dbrow="{{ row.id }}" onMouseDown="{{ row.grab }}" onClick="{{ row.open }}" onContextMenu="{{ row.context }}" style="display:flex;border-bottom:1px solid var(--border);cursor:pointer;opacity:{{ row.dragOp }}"  style-hover="background:var(--hover);--rh:1">
                             <sc-for list="{{ row.cells }}" as="cl" hint-placeholder-count="5">
-                              <span data-dbcell="1" onClick="{{ cl.tap }}" style="width:{{ cl.w }};flex:none;padding:8px 12px;font-size:13px;border-right:1px solid var(--border);display:flex;align-items:center;gap:4px;flex-wrap:wrap;min-height:34px;cursor:{{ cl.cursor }};background:{{ cl.cellBg }};box-shadow:{{ cl.cellRing }}">
+                              <span data-dbcell="1" data-dbcol="{{ cl.id }}" onClick="{{ cl.tap }}" style="width:{{ cl.w }};flex:none;padding:8px 12px;font-size:13px;border-right:1px solid var(--border);display:flex;align-items:center;gap:4px;flex-wrap:wrap;min-height:34px;cursor:{{ cl.cursor }};background:{{ cl.cellBg }};box-shadow:{{ cl.cellRing }}">
                                 <sc-if value="{{ cl.editing }}" hint-placeholder-val="{{ false }}">
                                   <input ref="{{ cl.editRef }}" type="{{ cl.editType }}" value="{{ cl.editValue }}" onChange="{{ cl.change }}" onBlur="{{ cl.commit }}" onKeyDown="{{ cl.key }}" style="width:100%;border:0;background:none;color:var(--text);font-size:13px;outline:none;padding:0" />
                                 </sc-if>
@@ -791,6 +804,9 @@ button:active{transform:scale(.985);opacity:.85}
                             </sc-for>
                           </div>
                         </sc-for>
+                        <sc-if value="{{ r.dbHasRows }}" hint-placeholder-val="{{ true }}">
+                          <button onClick="{{ r.dbAddRow }}" style="width:100%;display:flex;align-items:center;gap:8px;padding:9px 14px;font-size:12.5px;color:var(--faint);border-bottom:1px solid var(--border);text-align:left" style-hover="background:var(--hover);color:var(--text)">＋ New</button>
+                        </sc-if>
                       </div>
                       </sc-if>
 
@@ -821,6 +837,15 @@ button:active{transform:scale(.985);opacity:.85}
                           </div>
                         </sc-for>
                       </div>
+                      </sc-if>
+
+                      <sc-if value="{{ r.dbEmpty }}" hint-placeholder-val="{{ false }}">
+                        <div style="padding:32px 20px 36px;text-align:center;animation:aFade .2s ease">
+                          <div style="font-size:22px;opacity:.55">{{ r.dbEmptyGlyph }}</div>
+                          <div style="font-size:13.5px;font-weight:600;margin-top:9px">{{ r.dbEmptyTitle }}</div>
+                          <div style="font-size:12.5px;color:var(--muted);margin-top:3px;max-width:340px;margin-left:auto;margin-right:auto;text-wrap:pretty">{{ r.dbEmptyBody }}</div>
+                          <button onClick="{{ r.dbEmptyRun }}" style="margin-top:13px;height:28px;padding:0 13px;border-radius:5px;font-size:12.5px;border:1px solid var(--border);color:var(--text)" style-hover="background:var(--hover);border-color:var(--faint)">{{ r.dbEmptyAction }}</button>
+                        </div>
                       </sc-if>
 
                     </div>
@@ -1890,7 +1915,7 @@ class Component extends DCLogic {
     expanded: { p_home: true, p_notes: true },
     focusId: null, hoverId: null, dragId: null, dropId: null,
     panel: null, modal: null, sheet: null, menu: null, slash: null,
-    dbView: {}, roVersion: null, toast: null, cellEdit: null,
+    dbView: {}, dbQuery: {}, roVersion: null, toast: null, cellEdit: null,
     pubSlug: null, pubDoc: null, pubLoading: false, pubLocked: false, pubMissing: false,
     diffA: null, diffB: 'current', diffMode: 'split',
     isMobile: false, sidebarOpen: true, search: '', kbOpen: false
@@ -1920,6 +1945,16 @@ class Component extends DCLogic {
     this._onKey = (e) => {
       const k = e.key.toLowerCase();
       const sel = this.state.blockSel || [];
+      /* A press inside a form field belongs to that field. The page body used
+         to be contentEditable blocks and nothing else, so this listener could
+         treat every keystroke as the page's — then the table grew editable
+         cells and a find box, and ⌘A inside one of them selected every BLOCK
+         on the page instead of the text in the field. The next character then
+         replaced those blocks, taking the database block with them, and the
+         table itself was collected as unreachable. The shortcuts that are
+         genuinely global (Escape, ⌘K, undo) still run; the ones that act on a
+         block selection do not. */
+      const inField = !!(e.target && e.target.closest && e.target.closest('input,textarea,select'));
       if ((e.metaKey || e.ctrlKey) && k === 'k') { e.preventDefault(); this.openSearch(); return; }
       if ((e.metaKey || e.ctrlKey) && k === 'z' && this.state.route === 'app' && !this.state.modal) {
         e.preventDefault(); e.shiftKey ? this.redo() : this.undo(); return;
@@ -1928,13 +1963,13 @@ class Component extends DCLogic {
       /* Once a selection has crossed into whole-block mode nothing is
          focused, so the block's own key handler is out of the picture and
          growing the range is this listener's job. */
-      if (sel.length && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey &&
+      if (!inField && sel.length && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey &&
           (e.key === 'ArrowUp' || e.key === 'ArrowDown') && this.state.route === 'app') {
         e.preventDefault();
         this.growBlockSel(e.key === 'ArrowUp' ? -1 : 1);
         return;
       }
-      if ((e.metaKey || e.ctrlKey) && k === 'x' && sel.length > 1) {
+      if (!inField && (e.metaKey || e.ctrlKey) && k === 'x' && sel.length > 1) {
         const blocks = sel.map(id => { const f = this.locate(id); return f && f.block; }).filter(Boolean);
         navigator.clipboard.writeText(AMD.toMarkdown(blocks, { pages: this.state.pages, dbs: this.state.dbs }));
         e.preventDefault();
@@ -1954,7 +1989,7 @@ class Component extends DCLogic {
         return;
       }
       /* typing with a multi-block selection replaces it */
-      if (sel.length > 1 && e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (!inField && sel.length > 1 && e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         const ch = e.key;
         const nb = { id: uid('b'), type: 'p', text: ch, indent: 0 };
@@ -1968,7 +2003,7 @@ class Component extends DCLogic {
         setTimeout(() => { const q = this._els[nb.id]; if (q) { q.focus(); setCaret(q, 1); } }, 30);
         return;
       }
-      if ((e.metaKey || e.ctrlKey) && k === 'a' && this.state.route === 'app') {
+      if (!inField && (e.metaKey || e.ctrlKey) && k === 'a' && this.state.route === 'app') {
         if (this._allOnce || !this.state.focusId) {
           e.preventDefault(); this._allOnce = false;
           const ids = this.flat().map(r => r.id);
@@ -1977,7 +2012,7 @@ class Component extends DCLogic {
         } else { this._allOnce = true; clearTimeout(this._allT); this._allT = setTimeout(() => { this._allOnce = false; }, 1500); }
         return;
       }
-      if ((e.key === 'Backspace' || e.key === 'Delete') && sel.length > 1) {
+      if (!inField && (e.key === 'Backspace' || e.key === 'Delete') && sel.length > 1) {
         e.preventDefault();
         this.mutate(bs => {
           sel.forEach(id => { const f = this.locate(id, bs); if (f) f.list.splice(f.i, 1); });
@@ -2081,7 +2116,7 @@ class Component extends DCLogic {
       const data = loaded && loaded.pages ? loaded : seed;
       const user = AStore.user;
       this.setState(st => ({
-        ready: true, pages: data.pages, dbs: data.dbs || {},
+        ready: true, pages: data.pages, dbs: this.normAllDbs(data.dbs || {}),
         pageId: this.resolvePageId(data.pages, st.pageId),
         prefs: Object.assign({ theme: this.props.startTheme || 'light', fullWidth: false, sourceView: false, sidebarW: 264 }, data.prefs || {}, this.props.startTheme ? { theme: this.props.startTheme } : {}),
         invites: data.invites || [],
@@ -2136,7 +2171,7 @@ class Component extends DCLogic {
           pages[st.pageId] = mine;
         }
         const pageId = this.resolvePageId(pages, st.pageId, true);
-        return { pages, pageId, dbs: remote.dbs || st.dbs, prefs: remote.prefs || st.prefs,
+        return { pages, pageId, dbs: remote.dbs ? this.normAllDbs(remote.dbs) : st.dbs, prefs: remote.prefs || st.prefs,
                  workspace: remote.workspace || st.workspace, invites: remote.invites || st.invites };
       }, () => {
         if (this.state.pageId) this.ensureBody(this.state.pageId);
