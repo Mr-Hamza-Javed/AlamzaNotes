@@ -927,12 +927,21 @@ class as an unreferenced database. `dropVersionBlocks()` clears the node and the
 memo cache.
 
 **Creating a version**
-1. User clicks **New version**.
-2. A dialog asks for an *optional* message.
+1. User clicks **New version**. The dialog states what the capture covers —
+   "the page plus 2 sub-pages and 1 table" — rather than "the page", which is
+   not what a snapshot is.
+2. A dialog asks for an *optional* message. It is focused on open, `⌘⏎` commits,
+   and the Save button stays on screen and goes grey when there is nothing to
+   capture: removing it left the explanation pointing at a button that was no
+   longer there. While a deep capture is fetching, the button says so — the
+   lock used to swallow the click in silence, so it read as broken.
 3. If the message is blank, the app **generates a meaningful message itself**
    from what actually changed (e.g. *"Added 2 headings, rewrote intro"*).
    Nested edits are named too: a snapshot whose root is untouched reads
-   *"Changes in 2 nested pages"* rather than *"No content changes"*.
+   *"Changes in 2 nested pages"* rather than *"No content changes"*. The dialog
+   previews this under "If you leave it blank:", and `autoMessage()` is the ONE
+   builder both use — the two had drifted, so the preview ended "· 2 nested"
+   where the saved text ended "· changes in 2 nested pages".
 4. That message is attached to the **state being closed** — i.e. it describes
    the version just archived.
 5. The archived snapshot is pushed onto the version list; the user continues
@@ -989,8 +998,21 @@ are a render value and every remote delta, so a missing one was re-read on
 every keystroke pause and every edit made on another device.
 
 **Version list** — right panel / mobile sheet. Shows `v3 · message · author ·
-relative time`, plus an always-present **Current (unsaved)** row. A snapshot
-that reaches past its own page carries a `+N nested` badge.
+relative time · +/-/~`, plus an always-present **Current (unsaved)** row. A
+snapshot that reaches past its own page carries a `+N nested` badge. The mobile
+sheet shows all of it and reaches all of it: it used to render the message and
+two buttons, with the row itself inert and the rest of the actions — open
+read-only, copy as Markdown, delete — behind a right-click that a phone cannot
+perform. Every row carries a `⋯` on both surfaces for the same reason: a
+right-click is not a keyboard-reachable affordance either.
+
+**The highlight marks what is on screen** — the version being previewed, or the
+CURRENT row when nothing is. It used to key off `diffB === 'current'`, which is
+the initial state, so CURRENT was lit from boot and stayed lit.
+
+**A drag across a version message is not a click on it.** Selecting the text
+used to open the preview on mouse-up. Opening one no longer closes the panel
+either — the panel is how the reader picks the next version.
 
 **A fresh snapshot must not be clobbered by its own echo.** `project()` rebuilds
 every page's `versions` from `remote.vmeta`, so writing a snapshot without
@@ -1017,7 +1039,17 @@ version list than the one already in state — deletion has its own path.
   version left the pane on "comparing…" for as long as the modal stayed open.
 - **Granularity: both** — block-level markers in the gutter (`+`, `−`, `~`)
   **and** word-level highlighting inside changed blocks.
-- Diff summary header: `+N blocks · −N blocks · ~N changed`.
+- Diff summary header: `+N blocks · −N blocks · ~N changed`, **for the whole
+  comparison**, with "across N pages" beside it and the selected page's own
+  counts on their own line. The header used to print the SELECTED page's
+  numbers, which reads as the total and changes the moment you click a
+  different page in the rail.
+- An unchanged page inside a comparison that has changes says *"This page is
+  unchanged"*; only a comparison with nothing in it at all says *"These two
+  versions are identical"*.
+- **Restore is offered for whichever side is a version.** Keying it to the A
+  side alone meant swapping the two selects removed the button rather than
+  pointing it the other way.
 
 **Restore says how far it reaches before the click.** A restore rewrites every
 nested page the snapshot captured and replaces every table they embed, and the
@@ -1042,6 +1074,15 @@ no reader would predict. That gets a warning naming the pages.
    only the pages that happened to be loaded, counted the rest as deleted, and
    left the reader with a way back that did not lead all the way back.
 3. **Open read-only** — just look at the old version, no writes.
+
+**Escape closes one thing, outermost first** — slash menu, context menu,
+modal, sheet, cell editor, block selection, then the read-only version preview,
+then focus mode. It used to clear every overlay at once and never considered
+the preview at all, so the reader's first instinct for leaving one did nothing.
+
+**A version message is free text.** The read-only banner clamps it to one line
+with the full text on hover; unclamped, a long one pushed the four buttons
+beside it off the banner.
 
 **Read-only obeys the null-vs-empty contract.** A snapshot whose payload is
 still in flight renders through `vblocks()`, which returns `[]` — so without a

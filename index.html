@@ -409,7 +409,7 @@ button:active{transform:scale(.985);opacity:.85}
           <sc-if value="{{ readOnlyBanner }}" hint-placeholder-val="{{ false }}">
           <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;padding:9px 12px;border-radius:5px;background:var(--accent-soft);border:1px solid var(--accent);margin-bottom:18px">
             <span style="font-size:15px;flex:none">🕰️</span>
-            <span style="flex:{{ roLabelFlex }};min-width:0;font-size:13px">{{ readOnlyLabel }}</span>
+            <span title="{{ readOnlyTitle }}" style="flex:{{ roLabelFlex }};min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ readOnlyLabel }}</span>
             <button onClick="{{ copyRoMarkdown }}" style="flex:none;height:30px;padding:0 11px;border-radius:4px;border:1px solid var(--accent);font-size:12.5px;font-weight:600;color:var(--accent);white-space:nowrap" style-hover="background:var(--surface)">{{ roCopyLabel }}</button>
             <button onClick="{{ diffRoVersion }}" style="flex:none;height:30px;padding:0 11px;border-radius:4px;font-size:12.5px;font-weight:500;color:var(--muted);white-space:nowrap" style-hover="background:var(--surface)">Diff</button>
             <button onClick="{{ openRestoreFromRO }}" style="flex:none;height:30px;padding:0 11px;border-radius:4px;background:var(--accent);color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap">Restore…</button>
@@ -978,6 +978,9 @@ button:active{transform:scale(.985);opacity:.85}
               <sc-if value="{{ v.canRestore }}" hint-placeholder-val="{{ true }}">
                 <button onClick="{{ v.restore }}" style="font-size:11.5px;padding:3px 8px;border-radius:4px;color:var(--muted);font-weight:500" style-hover="background:var(--hover);color:var(--text)">Restore…</button>
               </sc-if>
+              <sc-if value="{{ v.hasMenu }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ v.more }}" title="More actions" aria-label="More actions" style="width:22px;height:22px;border-radius:4px;color:var(--muted);font-size:13px;display:grid;place-items:center" style-hover="background:var(--hover);color:var(--text)">⋯</button>
+              </sc-if>
             </sc-if>
           </div>
           <sc-if value="{{ v.stat }}" hint-placeholder-val="{{ false }}">
@@ -1275,7 +1278,7 @@ button:active{transform:scale(.985);opacity:.85}
 </sc-if>
 
 <sc-if value="{{ hasMenu }}" hint-placeholder-val="{{ false }}">
-<div data-menu="1" style="position:fixed;left:{{ menuX }};top:{{ menuY }};z-index:80;width:{{ menuW }};background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);padding:5px;animation:aPop .12s ease;max-height:70vh;overflow-y:auto;overflow-x:hidden">
+<div data-menu="1" style="position:fixed;left:{{ menuX }};top:{{ menuY }};z-index:100;width:{{ menuW }};background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);padding:5px;animation:aPop .12s ease;max-height:70vh;overflow-y:auto;overflow-x:hidden">
   <sc-for list="{{ menuItems }}" as="m" hint-placeholder-count="5">
     <sc-if value="{{ m.isHeader }}" hint-placeholder-val="{{ false }}">
       <div style="padding:7px 9px 3px;font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)">{{ m.label }}</div>
@@ -1367,7 +1370,7 @@ button:active{transform:scale(.985);opacity:.85}
     <sc-if value="{{ mIsNewVersion }}" hint-placeholder-val="{{ false }}">
     <div style="padding:22px 22px 18px">
       <div style="font-size:18px;font-weight:700;letter-spacing:-.01em">Create a version</div>
-      <div style="margin-top:6px;font-size:13.5px;color:var(--muted);line-height:1.6">This snapshots the page as it is right now. The message describes the state you are closing — you keep editing afterwards.</div>
+      <div style="margin-top:6px;font-size:13.5px;color:var(--muted);line-height:1.6">{{ verScopeLine }} The message describes the state you are closing — you keep editing afterwards.</div>
       <sc-if value="{{ pendKnown }}" hint-placeholder-val="{{ true }}">
         <div style="margin-top:16px;display:flex;gap:8px;align-items:center;font-size:12px;font-family:var(--mono)">
           <span style="color:var(--add-fg)">+{{ pendAdd }}</span><span style="color:var(--del-fg)">−{{ pendDel }}</span><span style="color:var(--muted)">~{{ pendChg }}</span>
@@ -1383,15 +1386,20 @@ button:active{transform:scale(.985);opacity:.85}
       <sc-if value="{{ verBlocked }}" hint-placeholder-val="{{ false }}">
         <div style="margin-top:14px;padding:12px 14px;border-radius:6px;background:var(--soft);border:1px solid var(--border);font-size:12.5px;line-height:1.6;color:var(--muted)">{{ verBlockedMsg }}</div>
       </sc-if>
-      <textarea value="{{ verMsg }}" onChange="{{ setVerMsg }}" placeholder="Optional — what changed?" rows="3" style="margin-top:12px;width:100%;border-radius:6px;border:1px solid var(--border);background:var(--canvas);padding:11px 13px;font-size:14px;line-height:1.55;outline:none;resize:none"></textarea>
+      <textarea value="{{ verMsg }}" onChange="{{ setVerMsg }}" onKeyDown="{{ verMsgKey }}" autoFocus="{{ verAutoFocus }}" placeholder="Optional — what changed?  ⌘⏎ to save" rows="3" style="margin-top:12px;width:100%;border-radius:6px;border:1px solid var(--border);background:var(--canvas);padding:11px 13px;font-size:14px;line-height:1.55;outline:none;resize:none"></textarea>
       <div style="margin-top:9px;display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border-radius:5px;background:var(--accent-soft);font-size:12.5px;line-height:1.55;color:var(--accent)">
         <span style="font-size:13px">✨</span><span style="flex:1"><b style="font-weight:600">If you leave it blank:</b> {{ autoMsgPreview }}</span>
       </div>
     </div>
     <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
       <button onClick="{{ closeModal }}" style="height:38px;padding:0 15px;border-radius:5px;font-size:13.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover);color:var(--text)">Cancel</button>
-      <sc-if value="{{ verCanSave }}" hint-placeholder-val="{{ true }}">
-        <button onClick="{{ commitVersion }}" style="height:38px;padding:0 17px;border-radius:5px;background:var(--accent);color:#fff;font-size:13.5px;font-weight:600">Save version</button>
+      <sc-if value="{{ showSaveVersion }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ commitVersion }}" disabled="{{ verSaveOff }}" style="height:38px;padding:0 17px;border-radius:5px;background:{{ verSaveBg }};color:{{ verSaveColor }};font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:8px">
+          <sc-if value="{{ verBusy }}" hint-placeholder-val="{{ false }}">
+            <span style="flex:none;width:11px;height:11px;border-radius:50%;border:2px solid var(--faint);border-top-color:var(--muted);animation:aSpin .7s linear infinite"></span>
+          </sc-if>
+          <span>{{ verSaveLabel }}</span>
+        </button>
       </sc-if>
     </div>
     </sc-if>
@@ -1637,9 +1645,13 @@ button:active{transform:scale(.985);opacity:.85}
       <select value="{{ diffB }}" onChange="{{ setDiffB }}" style="flex:{{ diffSelFlex }};min-width:0;height:34px;border-radius:5px;border:1px solid var(--border);background:var(--canvas);padding:0 8px;font-size:12.5px;cursor:pointer">
         <sc-for list="{{ diffOptsB }}" as="o" hint-placeholder-count="3"><option value="{{ o.id }}">{{ o.label }}</option></sc-for>
       </select>
-      <div style="display:flex;gap:8px;margin-left:{{ diffStatGap }};font-family:var(--mono);font-size:12px">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-left:{{ diffStatGap }};font-family:var(--mono);font-size:12px">
         <span style="color:var(--add-fg)">+{{ diffAdd }}</span><span style="color:var(--del-fg)">−{{ diffDel }}</span><span style="color:var(--muted)">~{{ diffChg }}</span>
+        <span style="font-family:var(--ui);font-size:11px;color:var(--faint);white-space:nowrap">{{ diffScopeNote }}</span>
       </div>
+      <sc-if value="{{ showDiffPageStat }}" hint-placeholder-val="{{ false }}">
+        <span style="font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px">{{ diffPageStat }}</span>
+      </sc-if>
       <div style="flex:1"></div>
       <sc-if value="{{ showDiffModes }}" hint-placeholder-val="{{ true }}">
       <div style="display:flex;padding:2px;border-radius:5px;background:var(--soft);border:1px solid var(--border)">
@@ -1730,7 +1742,7 @@ button:active{transform:scale(.985);opacity:.85}
         </div>
       </sc-if>
       <sc-if value="{{ diffNone }}" hint-placeholder-val="{{ false }}">
-        <div style="padding:70px 20px;text-align:center;color:var(--faint);font-family:var(--serif);font-size:22px">These two versions are identical.</div>
+        <div style="padding:70px 20px;text-align:center;color:var(--faint);font-family:var(--serif);font-size:22px;line-height:1.4;max-width:520px;margin:0 auto">{{ diffNoneText }}</div>
       </sc-if>
     </div>
     </div>
@@ -1738,7 +1750,7 @@ button:active{transform:scale(.985);opacity:.85}
       <span style="font-size:12px;color:var(--faint)">Word-level changes are highlighted inside each modified block.</span>
       <div style="flex:1"></div>
       <sc-if value="{{ diffCanRestore }}" hint-placeholder-val="{{ false }}">
-        <button onClick="{{ diffRestore }}" style="height:34px;padding:0 14px;border-radius:5px;border:1px solid var(--border);font-size:13px;font-weight:600" style-hover="background:var(--hover)">Restore {{ diffALabel }}…</button>
+        <button onClick="{{ diffRestore }}" style="height:34px;padding:0 14px;border-radius:5px;border:1px solid var(--border);font-size:13px;font-weight:600" style-hover="background:var(--hover)">Restore {{ diffRestoreLabel }}…</button>
       </sc-if>
     </div>
     </sc-if>
@@ -1856,7 +1868,7 @@ button:active{transform:scale(.985);opacity:.85}
         </div>
       </sc-if>
       <sc-for list="{{ versionList }}" as="v" hint-placeholder-count="3">
-        <div style="position:relative;padding:12px 12px 12px 30px;border-radius:6px;background:{{ v.bg }};margin-bottom:4px">
+        <div onClick="{{ v.select }}" style="position:relative;padding:12px 12px 12px 30px;border-radius:6px;background:{{ v.bg }};border:1px solid {{ v.bd }};margin-bottom:4px">
           <span style="position:absolute;left:12px;top:18px;width:10px;height:10px;border-radius:50%;background:{{ v.dot }}"></span>
           <span style="position:absolute;left:16.5px;top:30px;bottom:-6px;width:1px;background:{{ v.line }}"></span>
           <div style="display:flex;align-items:baseline;gap:8px">
@@ -1864,11 +1876,31 @@ button:active{transform:scale(.985);opacity:.85}
             <span style="font-size:12px;color:var(--faint);margin-left:auto">{{ v.when }}</span>
           </div>
           <div style="font-size:14.5px;line-height:1.45;margin-top:4px">{{ v.message }}</div>
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:7px">
+            <span style="font-size:12px;color:var(--faint)">{{ v.author }}</span>
+            <sc-if value="{{ v.auto }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:11px;padding:1px 7px;border-radius:20px;background:var(--soft);color:var(--muted);border:1px solid var(--border)">auto</span>
+            </sc-if>
+            <sc-if value="{{ v.deep }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:11px;padding:1px 7px;border-radius:20px;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-tint);font-weight:600">{{ v.deepLabel }}</span>
+            </sc-if>
+            <sc-if value="{{ v.stat }}" hint-placeholder-val="{{ false }}">
+              <span style="display:flex;gap:8px;font-size:11.5px;font-family:var(--mono)">
+                <span style="color:var(--add-fg)">+{{ v.add }}</span>
+                <span style="color:var(--del-fg)">−{{ v.del }}</span>
+                <span style="color:var(--muted)">~{{ v.chg }}</span>
+              </span>
+            </sc-if>
+          </div>
           <div style="display:flex;gap:8px;margin-top:10px">
             <sc-if value="{{ v.actions }}" hint-placeholder-val="{{ true }}">
               <button onClick="{{ v.diff }}" style="height:36px;padding:0 14px;border-radius:5px;background:var(--accent-soft);color:var(--accent);font-size:13px;font-weight:600">View diff</button>
               <sc-if value="{{ v.canRestore }}" hint-placeholder-val="{{ true }}">
                 <button onClick="{{ v.restore }}" style="height:36px;padding:0 14px;border-radius:5px;background:var(--soft);font-size:13px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover);color:var(--text)">Restore…</button>
+              </sc-if>
+              <div style="flex:1"></div>
+              <sc-if value="{{ v.hasMenu }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ v.more }}" title="More actions" aria-label="More actions" style="width:36px;height:36px;flex:none;border-radius:5px;background:var(--soft);color:var(--muted);font-size:15px;display:grid;place-items:center">⋯</button>
               </sc-if>
             </sc-if>
           </div>
@@ -1948,7 +1980,7 @@ class Component extends DCLogic {
     focusId: null, hoverId: null, dragId: null, dropId: null,
     panel: null, modal: null, sheet: null, menu: null, slash: null,
     dbView: {}, dbQuery: {}, roVersion: null, toast: null, cellEdit: null,
-    restoring: false,
+    restoring: false, capturing: false,
     pubSlug: null, pubDoc: null, pubLoading: false, pubLocked: false, pubMissing: false,
     diffA: null, diffB: 'current', diffMode: 'split',
     isMobile: false, sidebarOpen: true, search: '', kbOpen: false
@@ -2014,13 +2046,8 @@ class Component extends DCLogic {
         this.toast(sel.length + ' blocks cut');
         return;
       }
-      if (e.key === 'Escape') {
-        if (this.state.slash) this.clearTrigger(this.state.slash.id);
-        const wasPlain = !this.state.modal && !this.state.menu && !this.state.slash && !this.state.sheet;
-        this.setState({ modal: null, menu: null, slash: null, sheet: null, blockSel: [], selBar: null, cellEdit: null });
-        if (wasPlain && this.state.focusMode) this.setState({ focusMode: false });
-        return;
-      }
+      /* one press, one thing — see escapeKey() in lib/part-tools.js */
+      if (e.key === 'Escape') { this.escapeKey(); return; }
       /* typing with a multi-block selection replaces it */
       if (!inField && sel.length > 1 && e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
