@@ -48,29 +48,29 @@ template itself.
 
 | File | Lines | What it owns |
 | --- | ---: | --- |
-| `lib/part-data.js` | 343 | Reading and writing state safely |
+| `lib/part-data.js` | 358 | Reading and writing state safely |
 | `lib/part-editor.js` | 1091 | The typing surface |
-| `lib/part-pages.js` | 462 | Moving between pages, and the page tree |
-| `lib/part-versions.js` | 624 | Snapshots, diff and restore |
+| `lib/part-pages.js` | 523 | Moving between pages, and the page tree |
+| `lib/part-versions.js` | 656 | Snapshots, diff and restore |
 | `lib/part-blocks.js` | 278 | Block structure |
 | `lib/part-database.js` | 1415 | Tables |
 | `lib/part-drag.js` | 368 | Dragging |
-| `lib/part-tools.js` | 1401 | Everything else the page needs |
-| `lib/part-menus.js` | 1529 | What menus, modals and sheets contain |
-| `lib/part-render.js` | 717 | What the template receives |
+| `lib/part-tools.js` | 1420 | Everything else the page needs |
+| `lib/part-menus.js` | 1539 | What menus, modals and sheets contain |
+| `lib/part-render.js` | 723 | What the template receives |
 | `index.dc.html` | 2294 | template + state, lifecycle, persist |
 
 ## Method index
 
 Grep this instead of the codebase.
 
-**`lib/part-data.js`** — `page`, `resolvePageId`, `dbFor`, `activeBlocks`, `bodyReady`, `ensureBody`, `ensureBodies`, `needParent`, `digestMap`, `digestFor`, `rowsReady`, `ensureRows`, `repairRowPages`, `repairAllRowPages`, `dbIdsIn`, `ensureRowsFor`, `myRole`, `canEdit`, `canComment`, `isReadOnly`, `patchPage`, `setBlocks`, `locate`, `miniRow`, `mutate`, `_mutate`
+**`lib/part-data.js`** — `page`, `resolvePageId`, `dbFor`, `activeBlocks`, `bodyReady`, `ensureBody`, `ensureBodies`, `needParent`, `digestMap`, `digestFor`, `rowsReady`, `ensureRows`, `repairRowPages`, `repairAllRowPages`, `dbIdsIn`, `ensureRowsFor`, `myRole`, `canEdit`, `canComment`, `canWriteHistory`, `isReadOnly`, `patchPage`, `setBlocks`, `locate`, `miniRow`, `mutate`, `_mutate`
 
 **`lib/part-editor.js`** — `nearView`, `syncDom`, `blockHtml`, `elRef`, `mathRef`, `gutRef`, `paintGutter`, `afterEdit`, `highlightNow`, `codeEdit`, `setCodeText`, `readBlock`, `editText`, `selectBlockRange`, `growBlockSel`, `onInput`, `caretRect`, `clearTrigger`, `insertMention`, `tryShortcut`, `insertAfter`, `removeBlock`, `onKey`, `wrapSel`, `onPaste`, `onFocus`, `onBlur`
 
-**`lib/part-pages.js`** — `flat`, `openPage`, `mobileBack`, `goHome`, `newPage`, `versionById`, `normSnap`, `vsnap`, `vblocks`, `ensureVersion`, `syncVersionMeta`, `ensureVersionMeta`, `primeLatestVersion`, `cacheVersion`, `versionMetaKnown`, `versionGone`, `mergeVersions`, `deleteVersion`, `subtreeIds`, `snapshotIds`, `descendants`, `trashPage`, `restorePage`
+**`lib/part-pages.js`** — `flat`, `openPage`, `mobileBack`, `goHome`, `newPage`, `versionById`, `normSnap`, `vsnap`, `vblocks`, `ensureVersion`, `syncVersionMeta`, `ensureVersionMeta`, `primeLatestVersion`, `cacheVersion`, `touchVersion`, `trimVersionCache`, `forgetVersions`, `checkRoVersion`, `versionMetaKnown`, `versionGone`, `mergeVersions`, `deleteVersion`, `subtreeIds`, `snapshotIds`, `descendants`, `trashPage`, `restorePage`
 
-**`lib/part-versions.js`** — `toggleTheme`, `toggleSource`, `toast`, `copyMarkdown`, `buildSnapshot`, `ensureSnapshotReady`, `ensureBaseline`, `nextVersionN`, `createVersion`, `authorVersion`, `remapSnapshot`, `remapVersionMeta`, `dbsUsedBy`, `restoreScope`, `restore`, `applyRestore`, `openDiff`, `diffPending`, `blocksOf`, `diffScope`, `labelOf`, `diffText`, `diffStyle`, `tokens`, `plain`
+**`lib/part-versions.js`** — `toggleTheme`, `toggleSource`, `toast`, `copyMarkdown`, `buildSnapshot`, `ensureSnapshotReady`, `ensureBaseline`, `nextVersionN`, `createVersion`, `authorVersion`, `remapSnapshot`, `remapVersionMeta`, `dbsUsedBy`, `restoreScope`, `restore`, `applyRestore`, `pickDiffSide`, `openDiff`, `diffPending`, `blocksOf`, `diffScope`, `labelOf`, `diffText`, `diffStyle`, `tokens`, `plain`
 
 **`lib/part-blocks.js`** — `moveBlock`, `startDrag`, `turnInto`, `duplicateBlock`, `insertOfType`, `slashKey`, `slashCatalog`, `mentionCatalog`
 

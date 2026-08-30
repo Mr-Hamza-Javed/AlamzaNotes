@@ -576,7 +576,11 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   and flashes it.
 - **Change markers** — with *Show changes since last version* on, every block
   added or edited since the latest snapshot gets a `+` / `~` in the gutter;
-  clicking it opens the diff.
+  clicking it opens the diff. The baseline is the snapshot's PAYLOAD, not the
+  version row: the row's `blocks` field is the deep `{b,d,p}` object in session
+  and is not stored at all, so diffing against it marked every block on the
+  page as new, every time the preference was on. A baseline still loading is
+  UNKNOWN and shows nothing.
 - **Read-only safety** — while previewing an old version nothing can write to
   the live note (checkboxes, toggles and inserts are inert).
 - Blocks also include a plain **table** and **2- / 3-column layouts**; both
@@ -934,6 +938,56 @@ memo cache.
 5. The archived snapshot is pushed onto the version list; the user continues
    editing the current document, which is now the next version in progress.
 
+**What counts as a change** (`lib/diff.js`) — everything about a block except
+its `id`, which is identity rather than content; `collapsed`, which is whether
+a toggle happens to be open; and `comments`, which have their own panel. The
+signature used to be `type + level + text + checked` and nothing else, so the
+diff was blind to indentation, colour, a code block's language, a callout's
+icon, which table a database block embeds, which page a sub-page points at,
+every cell of a plain table, and the entire contents of toggles and columns.
+That is not only a display problem: `stats()` is what `createVersion` asks
+whether anything has changed, so an edit the diff could not see was an edit
+that could not be SNAPSHOTTED — "Nothing has changed since v3" over a page
+just rewritten inside a toggle.
+
+The signature is derived from the block rather than enumerated, so a field
+added later is covered by default, and its keys are sorted: the same block
+arrives with a different key order depending on whether it came from the editor
+or back from the database. The tree is FLATTENED first, so a nested change is
+reported at the child that moved, at its own depth, rather than at the wrapper
+around it — and the viewer, the +/- counts and the snapshot guard all read that
+same answer, which is the only way the three can agree.
+
+**The diff is bounded.** Both LCS passes are O(n*m) in time and memory and
+nothing capped them: one edited code block of a few thousand words took ~50
+seconds and over a gigabyte, which in a browser is a hung tab or a dead one.
+The matching head and tail are trimmed before the DP runs — exact, not an
+approximation, and what makes the ordinary case linear — and what is left has a
+ceiling, past which the middle is reported as a straight replacement.
+
+**Read-only, and who may write.** Reading a version is always on offer.
+Taking, restoring and deleting one are not: they ask `canWriteHistory()`, which
+is the invite's role plus "not in the Trash". None of the three asked at all, so
+a viewer could overwrite a page they only have view access to, and all three
+were offered on a trashed page directly beneath the banner saying editing was
+disabled. It is deliberately NOT `isReadOnly()` — that is true throughout a
+version preview, and "Restore…" is offered from inside one.
+
+**A preview whose version stops existing is left.** Deleted on another device,
+or a history that arrives without it: with no version to resolve,
+`activeBlocks()` fell through to the LIVE page while the banner still read
+"Read-only preview of an old version" and `isReadOnly()` still refused every
+edit. `checkRoVersion()` runs wherever a page becomes current.
+
+**Payloads are memoised, and the memo is bounded.** A payload is the heaviest
+object in the workspace, and both caches — the app's and the store's — held
+every one the session ever touched, across sign-out and across a switch into
+the demo workspace. Least-recently-used goes first; the version being previewed
+and anything still owed to the server are never evicted. A payload the server
+does not hold is remembered as ABSENT after one read: the two places that ask
+are a render value and every remote delta, so a missing one was re-read on
+every keystroke pause and every edit made on another device.
+
 **Version list** — right panel / mobile sheet. Shows `v3 · message · author ·
 relative time`, plus an always-present **Current (unsaved)** row. A snapshot
 that reaches past its own page carries a `+N nested` badge.
@@ -957,6 +1011,10 @@ version list than the one already in state — deletion has its own path.
   share a row of their own.
 - **Toggle between two modes**: *Side-by-side* (old left, new right) and
   *Inline* (single column, additions green, deletions struck red).
+- **Choosing a side FETCHES that side.** `openDiff` prefetched the two it
+  opened with and nothing else did — the dropdowns only set state, and the
+  pending branch fetches page bodies rather than payloads, so picking another
+  version left the pane on "comparing…" for as long as the modal stayed open.
 - **Granularity: both** — block-level markers in the gutter (`+`, `−`, `~`)
   **and** word-level highlighting inside changed blocks.
 - Diff summary header: `+N blocks · −N blocks · ~N changed`.
