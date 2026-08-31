@@ -576,7 +576,11 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
   and flashes it.
 - **Change markers** — with *Show changes since last version* on, every block
   added or edited since the latest snapshot gets a `+` / `~` in the gutter;
-  clicking it opens the diff.
+  clicking it opens the diff. The baseline is the snapshot's PAYLOAD, not the
+  version row: the row's `blocks` field is the deep `{b,d,p}` object in session
+  and is not stored at all, so diffing against it marked every block on the
+  page as new, every time the preference was on. A baseline still loading is
+  UNKNOWN and shows nothing.
 - **Read-only safety** — while previewing an old version nothing can write to
   the live note (checkboxes, toggles and inserts are inert).
 - Blocks also include a plain **table** and **2- / 3-column layouts**; both
@@ -787,6 +791,14 @@ four, plus every database any of them embeds. Anything less is a version that
 never existed: restoring it would leave the nested pages at their newest state
 while the parent went back in time.
 
+The subtree here is `snapshotIds()`, not `subtreeIds()`. The two differ by the
+database ROW pages: `subtreeIds` answers the sidebar's question — what can the
+reader navigate to — and leaves them out, because a row page is reached through
+its table. A snapshot is not a navigation question. A row and the page it opens
+as are two halves of one object, and capturing only the half that lives in the
+table is how a restore put a row's CELLS back to v3 while the note behind that
+row stayed at today.
+
 **Storage** — metadata and payload live apart, because they have opposite
 access patterns:
 
@@ -799,8 +811,20 @@ vdata/<pageId>/<vId>    the PAYLOAD — { b, d, p }  · read only when a version
 
 The payload is `b` (root blocks), `d` (databases used anywhere in the subtree)
 and `p` (every descendant, keyed by page id, each with title, icon, parent,
-order and blocks). `scope[]` in the metadata is a title-only manifest, so the
-diff can list the nested pages without fetching anything. Snapshots written
+order, blocks and the fields that say what the page IS — icon type, cover,
+favourite, `hidden`, `dbRef`). Those last ones exist because restore RECREATES
+a child that has been deleted since: rebuilt from title/icon/parent/order alone
+it came back stripped of its cover and its favourite, and a rebuilt row page
+came back with no `dbRef` at all — an orphan nothing in the app can open.
+Payloads written before they were captured simply lack the keys, and every one
+of them falls back on read. `scope[]` in the metadata is a title-only manifest,
+so the diff can list the nested pages without fetching anything.
+
+**Metadata is metadata.** `blocks` and `dbs` are payload and are stripped on the
+way to `vmeta`. Only `blocks` used to be, so every table a snapshot captured was
+duplicated into the version list — the one node a page open always downloads,
+and a 400-row table with it. `dbFor()` reads the previewed version's tables out
+of the payload, which is fetched exactly when a version is opened. Snapshots written
 before deep capture are a bare block array and are normalised on read by
 `normSnap()` — never special-cased at the call sites.
 
@@ -808,10 +832,33 @@ before deep capture are a bare block array and are normalised on read by
 metadata has not been fetched presents as `versions: []`. That is the
 null-vs-empty trap again, and here it is fatal: the empty list would be pushed
 straight back over the real one and the history would be gone for good. Two
-defences — `ensureVersionMeta()` fetches it whenever a page opens, and `push()`
-refuses to write an empty version list for a page whose metadata was never
-confirmed (`vmetaSeen`). A list fetched from the server never overwrites one
-authored in this session.
+defences become three — `ensureVersionMeta()` fetches it whenever a page opens,
+`push()` refuses to write an empty version list for a page whose metadata was
+never confirmed (`vmetaSeen`), and **`createVersion()` will not author against a
+history it has not read**.
+
+That last one is the defence the first two cannot supply, because the list a
+capture writes is not empty — it has one entry. `vmetaSeen` may only be set by
+something that has really seen the list: a completed read, or a push that wrote
+a non-empty one. Authoring a snapshot is neither, and while it did claim to be
+(`markVersionMeta`, now gone) a capture taken inside the fetch window made the
+app believe the single entry it had just written WAS the history: the read
+short-circuited and the next push put one snapshot where five had been. The
+history panel is part of this — an unread list renders as *loading*, never as
+"No snapshots yet · Take the first snapshot", which was an invitation to make
+exactly that click.
+
+**Two version lists are merged by identity, never by length.** `mergeVersions()`
+unions them by id and orders the result by `createdAt`. Comparing lengths is
+wrong in both directions: two devices taking a snapshot at the same moment
+produce two lists of equal length and one of the snapshots was silently
+dropped, and a list still carrying a snapshot the reader had just deleted was
+"longer", so the deletion was undone and pushed back. A deletion is therefore
+remembered explicitly (`versionGone`) — the absence of an id means "not
+fetched" on one side and "removed on purpose" on the other, and only a
+tombstone can tell those apart. Deleting is one door, `deleteVersion()`: the
+payload node, the memo, the tombstone, the row — and it asks first, because it
+cannot be undone.
 
 `openPage` is **not** the only way a page becomes current — boot resolves the
 first page directly, a remote delta can re-point `pageId`, and the versions
@@ -822,12 +869,29 @@ page the app opens on, showing whatever stale list the mirror happened to hold.
 **Capture is all-or-nothing.** Every body and every table in the subtree must
 be in hand before a snapshot is authored — a page still loading would be
 captured empty, which is how a version silently "doesn't store the changes".
-`createVersion()` prefetches, then re-runs itself. It also waits for the
-*previous* snapshot, because that is the baseline for the message and the +/−
-stat; diffing against a snapshot that has not loaded reports the entire page as
-newly added, and that wrong history cannot be recomputed later. A lock is held
-across the whole author, since two calls in one tick would both read the
-pre-commit list and the second would discard the first.
+`ensureSnapshotReady()` is that wait, and `ensureBaseline()` is the wait for the
+*previous* snapshot, which is the baseline for the message and the +/− stat:
+diffing against a snapshot that has not loaded reports the entire page as newly
+added, and that wrong history cannot be recomputed later.
+
+`createVersion()` asks its four questions in order — the stored history, the
+subtree, the baseline, and whether the reader is still on the page — and any of
+them saying no ends the attempt with a message. It used to be four re-entrant
+calls to itself, which is unbounded when one of them can never succeed: a body
+the server does not hold never becomes ready, so a capture on such a page sat in
+a fetch loop, billing a read and raising a toast on every pass, for as long as
+the tab stayed open. Everything the author needs is in hand before it runs, so
+`authorVersion()` is synchronous and no list can move under it — and the new
+entry is merged into whatever the list holds at write time, not into the copy
+read before the waiting started. A lock is held across the whole thing, since
+two calls in one tick would both read the pre-commit list and the second would
+discard the first.
+
+**"Absent from this capture" is not "deleted".** `deep.gone` counts a child that
+has really left the workspace or gone to the Trash. A page whose body simply had
+not been fetched is also absent, and counting it recorded "removed 3 nested
+pages" for three intact pages — permanently, since a stat cannot be recomputed.
+`buildSnapshot` reports `partial` when something was missing anyway.
 
 **A snapshot with nothing new is refused.** Identical content clutters the
 history and makes every diff against it read "identical", so `createVersion`
@@ -863,20 +927,92 @@ class as an unreferenced database. `dropVersionBlocks()` clears the node and the
 memo cache.
 
 **Creating a version**
-1. User clicks **New version**.
-2. A dialog asks for an *optional* message.
+1. User clicks **New version**. The dialog states what the capture covers —
+   "the page plus 2 sub-pages and 1 table" — rather than "the page", which is
+   not what a snapshot is.
+2. A dialog asks for an *optional* message. It is focused on open, `⌘⏎` commits,
+   and the Save button stays on screen and goes grey when there is nothing to
+   capture: removing it left the explanation pointing at a button that was no
+   longer there. While a deep capture is fetching, the button says so — the
+   lock used to swallow the click in silence, so it read as broken.
 3. If the message is blank, the app **generates a meaningful message itself**
    from what actually changed (e.g. *"Added 2 headings, rewrote intro"*).
    Nested edits are named too: a snapshot whose root is untouched reads
-   *"Changes in 2 nested pages"* rather than *"No content changes"*.
+   *"Changes in 2 nested pages"* rather than *"No content changes"*. The dialog
+   previews this under "If you leave it blank:", and `autoMessage()` is the ONE
+   builder both use — the two had drifted, so the preview ended "· 2 nested"
+   where the saved text ended "· changes in 2 nested pages".
 4. That message is attached to the **state being closed** — i.e. it describes
    the version just archived.
 5. The archived snapshot is pushed onto the version list; the user continues
    editing the current document, which is now the next version in progress.
 
+**What counts as a change** (`lib/diff.js`) — everything about a block except
+its `id`, which is identity rather than content; `collapsed`, which is whether
+a toggle happens to be open; and `comments`, which have their own panel. The
+signature used to be `type + level + text + checked` and nothing else, so the
+diff was blind to indentation, colour, a code block's language, a callout's
+icon, which table a database block embeds, which page a sub-page points at,
+every cell of a plain table, and the entire contents of toggles and columns.
+That is not only a display problem: `stats()` is what `createVersion` asks
+whether anything has changed, so an edit the diff could not see was an edit
+that could not be SNAPSHOTTED — "Nothing has changed since v3" over a page
+just rewritten inside a toggle.
+
+The signature is derived from the block rather than enumerated, so a field
+added later is covered by default, and its keys are sorted: the same block
+arrives with a different key order depending on whether it came from the editor
+or back from the database. The tree is FLATTENED first, so a nested change is
+reported at the child that moved, at its own depth, rather than at the wrapper
+around it — and the viewer, the +/- counts and the snapshot guard all read that
+same answer, which is the only way the three can agree.
+
+**The diff is bounded.** Both LCS passes are O(n*m) in time and memory and
+nothing capped them: one edited code block of a few thousand words took ~50
+seconds and over a gigabyte, which in a browser is a hung tab or a dead one.
+The matching head and tail are trimmed before the DP runs — exact, not an
+approximation, and what makes the ordinary case linear — and what is left has a
+ceiling, past which the middle is reported as a straight replacement.
+
+**Read-only, and who may write.** Reading a version is always on offer.
+Taking, restoring and deleting one are not: they ask `canWriteHistory()`, which
+is the invite's role plus "not in the Trash". None of the three asked at all, so
+a viewer could overwrite a page they only have view access to, and all three
+were offered on a trashed page directly beneath the banner saying editing was
+disabled. It is deliberately NOT `isReadOnly()` — that is true throughout a
+version preview, and "Restore…" is offered from inside one.
+
+**A preview whose version stops existing is left.** Deleted on another device,
+or a history that arrives without it: with no version to resolve,
+`activeBlocks()` fell through to the LIVE page while the banner still read
+"Read-only preview of an old version" and `isReadOnly()` still refused every
+edit. `checkRoVersion()` runs wherever a page becomes current.
+
+**Payloads are memoised, and the memo is bounded.** A payload is the heaviest
+object in the workspace, and both caches — the app's and the store's — held
+every one the session ever touched, across sign-out and across a switch into
+the demo workspace. Least-recently-used goes first; the version being previewed
+and anything still owed to the server are never evicted. A payload the server
+does not hold is remembered as ABSENT after one read: the two places that ask
+are a render value and every remote delta, so a missing one was re-read on
+every keystroke pause and every edit made on another device.
+
 **Version list** — right panel / mobile sheet. Shows `v3 · message · author ·
-relative time`, plus an always-present **Current (unsaved)** row. A snapshot
-that reaches past its own page carries a `+N nested` badge.
+relative time · +/-/~`, plus an always-present **Current (unsaved)** row. A
+snapshot that reaches past its own page carries a `+N nested` badge. The mobile
+sheet shows all of it and reaches all of it: it used to render the message and
+two buttons, with the row itself inert and the rest of the actions — open
+read-only, copy as Markdown, delete — behind a right-click that a phone cannot
+perform. Every row carries a `⋯` on both surfaces for the same reason: a
+right-click is not a keyboard-reachable affordance either.
+
+**The highlight marks what is on screen** — the version being previewed, or the
+CURRENT row when nothing is. It used to key off `diffB === 'current'`, which is
+the initial state, so CURRENT was lit from boot and stayed lit.
+
+**A drag across a version message is not a click on it.** Selecting the text
+used to open the preview on mouse-up. Opening one no longer closes the panel
+either — the panel is how the reader picks the next version.
 
 **A fresh snapshot must not be clobbered by its own echo.** `project()` rebuilds
 every page's `versions` from `remote.vmeta`, so writing a snapshot without
@@ -897,16 +1033,56 @@ version list than the one already in state — deletion has its own path.
   share a row of their own.
 - **Toggle between two modes**: *Side-by-side* (old left, new right) and
   *Inline* (single column, additions green, deletions struck red).
+- **Choosing a side FETCHES that side.** `openDiff` prefetched the two it
+  opened with and nothing else did — the dropdowns only set state, and the
+  pending branch fetches page bodies rather than payloads, so picking another
+  version left the pane on "comparing…" for as long as the modal stayed open.
 - **Granularity: both** — block-level markers in the gutter (`+`, `−`, `~`)
   **and** word-level highlighting inside changed blocks.
-- Diff summary header: `+N blocks · −N blocks · ~N changed`.
+- Diff summary header: `+N blocks · −N blocks · ~N changed`, **for the whole
+  comparison**, with "across N pages" beside it and the selected page's own
+  counts on their own line. The header used to print the SELECTED page's
+  numbers, which reads as the total and changes the moment you click a
+  different page in the rail.
+- An unchanged page inside a comparison that has changes says *"This page is
+  unchanged"*; only a comparison with nothing in it at all says *"These two
+  versions are identical"*.
+- **Restore is offered for whichever side is a version.** Keying it to the A
+  side alone meant swapping the two selects removed the button rather than
+  pointing it the other way.
+
+**Restore says how far it reaches before the click.** A restore rewrites every
+nested page the snapshot captured and replaces every table they embed, and the
+dialog used to say only "the working copy is overwritten with this version" — so
+the reach was discovered afterwards. `restoreScope()` counts the sub-pages and
+the tables, and singles out any table that is ALSO embedded on a page outside
+this subtree: restoring here changes a page over there, which is the one effect
+no reader would predict. That gets a warning naming the pages.
 
 **Restore** — opens a dialog with three choices:
 1. **Replace current** — current content is overwritten by the old version.
+   Nothing is snapshotted first, so ⌘Z is the only way back — and it is a real
+   way back: the step a restore files carries the whole subtree (`syncTailDeep`
+   writes the other pages' blocks into the entry's `x`, and the databases of the
+   whole subtree into its `d`). Filed as an ordinary single-page entry, ⌘Z put
+   the root page back and left every nested page and every table at the restored
+   state — a document that never existed.
 2. **Restore as new version** — history preserved; the old content becomes the
    new current. The safety snapshot it takes first is equally deep, is built by
-   the same builder, and waits for the previous snapshot so its stat is real.
+   the same builder, and waits for the same subtree AND the same baseline the
+   ordinary capture waits for. It did not wait for the subtree, so it captured
+   only the pages that happened to be loaded, counted the rest as deleted, and
+   left the reader with a way back that did not lead all the way back.
 3. **Open read-only** — just look at the old version, no writes.
+
+**Escape closes one thing, outermost first** — slash menu, context menu,
+modal, sheet, cell editor, block selection, then the read-only version preview,
+then focus mode. It used to clear every overlay at once and never considered
+the preview at all, so the reader's first instinct for leaving one did nothing.
+
+**A version message is free text.** The read-only banner clamps it to one line
+with the full text on hover; unclamped, a long one pushed the four buttons
+beside it off the banner.
 
 **Read-only obeys the null-vs-empty contract.** A snapshot whose payload is
 still in flight renders through `vblocks()`, which returns `[]` — so without a
@@ -922,9 +1098,19 @@ many nested pages actually *changed* (`deepStat.touched`), not how many exist.
 
 Restore rewrites the whole subtree in one state write: root, every captured
 child, and any child deleted since the snapshot, which is **recreated** —
-otherwise the restored parent links to nothing. Pages created *after* the
+otherwise the restored parent links to nothing. For the same reason a captured
+child sitting in the Trash comes back out of it. Pages created *after* the
 snapshot are left alone; deleting them would make restore destructive in a way
-nothing warned about.
+nothing warned about. The toast says what happened: how many nested pages, how
+many were recreated, how many were brought back from the Trash.
+
+**Duplicating a page carries its history, renamed.** A payload names pages,
+tables, rows, views and blocks by id, so the copy's payloads are remapped onto
+the copy's own ids (`remapSnapshot`) once the whole tree has been cloned and
+every id is known. They used to be copied verbatim: restoring one of them on the
+COPY wrote the snapshot's child blocks into the ORIGINAL's children and replaced
+the original's tables. Cold payloads are fetched before the duplicate is made,
+or the copy comes away with a history of rows that open on nothing.
 
 **The diff obeys the null-vs-empty contract too.** A nested page whose body has
 not been fetched is `null`, and diffing that against a real snapshot reports
