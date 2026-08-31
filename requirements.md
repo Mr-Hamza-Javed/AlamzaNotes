@@ -997,8 +997,32 @@ does not hold is remembered as ABSENT after one read: the two places that ask
 are a render value and every remote delta, so a missing one was re-read on
 every keystroke pause and every edit made on another device.
 
-**Version list** — right panel / mobile sheet. Shows `v3 · message · author ·
-relative time · +/-/~`, plus an always-present **Current (unsaved)** row. A
+**Version list** — right panel / mobile sheet. One card, four rows, and every
+one of them has exactly one elastic element so nothing can push anything else:
+
+```
+v3  [auto]                                   3m ago     identity · time
+Added 2 headings, rewrote intro                          the message, 3-line clamp
++8 −2 ~1  ·  ↳ 2 nested changed                          the facts, one line
+Billy Muchly                    Diff  Restore…  ⋯        who · what you can do
+```
+
+It used to be one row carrying the author, both badges AND all three buttons,
+none of them allowed to shrink — so a two-word name wrapped under the badges
+and the line collapsed into itself. Now the author is the only thing on its row
+that flexes (`flex:1; min-width:0`) and it truncates; every button is
+`flex:none`; the timestamp never breaks; the message clamps to three lines with
+the full text on hover; and an unbroken 100-character word wraps
+(`overflow-wrap:anywhere`) instead of widening the panel.
+
+The facts line carries its own separator rather than the template guessing:
+either half can be absent, and `+0 −0 ~0` is not printed at all — a snapshot
+whose root did not move is described by its nested count instead. The nested
+reach is muted text, not a second blue pill, so the one accent colour in the
+card belongs to the one primary action. The timeline connects downward, so the
+oldest snapshot ends it.
+
+Plus an always-present **Current (unsaved)** row. A
 snapshot that reaches past its own page carries a `+N nested` badge. The mobile
 sheet shows all of it and reaches all of it: it used to render the message and
 two buttons, with the row itself inert and the rest of the actions — open

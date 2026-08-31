@@ -57,8 +57,8 @@ template itself.
 | `lib/part-drag.js` | 368 | Dragging |
 | `lib/part-tools.js` | 1441 | Everything else the page needs |
 | `lib/part-menus.js` | 1604 | What menus, modals and sheets contain |
-| `lib/part-render.js` | 763 | What the template receives |
-| `index.dc.html` | 2321 | template + state, lifecycle, persist |
+| `lib/part-render.js` | 779 | What the template receives |
+| `index.dc.html` | 2340 | template + state, lifecycle, persist |
 
 ## Method index
 
