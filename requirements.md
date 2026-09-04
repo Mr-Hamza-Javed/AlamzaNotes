@@ -1392,7 +1392,7 @@ to treat any page a loaded row claims as an orphan.
 ## 8. Sharing
 
 - **Publish to web** — read-only public reader view with its own clean layout.
-- **Invite by email** with roles: viewer / commenter / editor.
+- **Invite by email** — the page appears in that account's sidebar, read-only.
 - **Link with password** option on published links.
 
 ### 8.1 What a published page actually is
@@ -1424,13 +1424,64 @@ Publishing marks the page published only once the write has landed, and demo
 mode says plainly that its link works in that browser only rather than
 implying a public URL.
 
-**An invite is addressed.** One array holds both the invites an account sent
-and the ones it received, so without a recipient an owner who invited a viewer
-and then accepted their own invitation from their own inbox became a viewer of
-their own page, unable to edit it. `invitedMe()` decides, and an invite with no
-recipient recorded cannot lower anyone's role. Cross-account delivery still
-needs a backend; until then the invite list is local to the workspace that
-wrote it.
+**A password seals the STORED copy, so it is sent when the password changes.**
+The encryption happens at publish time; a password that has been typed but not
+sent is not protecting anything. The re-send used to wait for the input to lose
+focus, so typing one and closing the dialog with Escape or the ✕ left the page
+publicly readable under a switch that read "protected". It now follows the
+value on a short fuse, closing the dialog flushes whatever is still waiting,
+and the dialog reports the state of the STORED copy — `publishInSync()` compares
+a fingerprint of the password in the box against the one the last successful
+publish actually used, and says "Not applied yet — the copy on the web is still
+readable without it" in red until they agree.
+
+### 8.2 Sharing a page with another account
+
+Invitations used to be appended to the SENDER's own workspace. The rules give
+every account its own workspace and nothing else, so an invitation had no route
+to the person it named: "Invitation sent" was a message that went nowhere, and
+the whole viewer/commenter/editor system was a screen with no wire behind it.
+
+Two nodes carry it, and the security rules are half the design:
+
+```
+inbox/<emailKey>/<inviteId>   an invitation. Readable ONLY by the account whose
+                              VERIFIED email matches the key; writable by its
+                              sender, and by the recipient so they can clear it
+shared/<pageId>               the page: `o` the owner, `m` the members by email
+                              key, and the content. Readable by the owner and
+                              by any member; writable only by the owner
+```
+
+An email cannot be an RTDB key as it stands — `.` is forbidden — so it is
+lowercased and its dots become commas. The rules do the same to
+`auth.token.email`, which is how "this inbox is mine" is answered by the server
+rather than by the client asking nicely. An address carrying any other reserved
+character cannot be keyed, and is refused rather than silently dropped.
+
+Both nodes are needed together: an invitation with no mirror is a notification
+for a page the reader cannot open, and a mirror with no invitation is a page
+nobody knows is there. `sendInvite()` writes the mirror first, because the
+reader may well click straight through.
+
+**A shared page is held in memory and nowhere else.** `shared: true` is what
+keeps it out of everything that writes: `push()` and the local mirror both skip
+it, `persist()` will not put it in the body cache, `childrenOf()` leaves it out
+of this workspace's tree, and a remote delta rebuilt from the index preserves
+it rather than dropping it. Reading a colleague's note never copies it into
+this workspace.
+
+**Removing someone takes their access with it** — the member list is rewritten
+and the mirror re-sent on the same action, and the guest's next read finds
+nothing and clears the page rather than leaving a copy that reads fine and no
+longer exists. Editing a shared page re-sends it on a fuse, flushed when the
+owner navigates away, so a guest is never left reading a version the owner has
+moved on from.
+
+**One role is offered, and it is the one that works end to end.** Commenter and
+editor need writes travelling back from the guest into the owner's copy, which
+is a second half this does not have — and a role that silently does nothing is
+the bug this section exists to remove.
 - **Presence**: "who's viewing" avatars + `Last edited by X · time`.
 - **Copy link** button on desktop; native-style **share sheet** on mobile.
 

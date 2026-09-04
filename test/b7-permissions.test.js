@@ -14,10 +14,12 @@ async function withHistory(over) {
   if (over) over(app);
   return app;
 }
-const viewer = (app) => app.setState({
-  invites: [{ pageId: 'p1', role: 'viewer', status: 'accepted', to: 'hamzajaved1213@gmail.com' }],
-  user: { uid: 'u1', name: 'Tester', email: 'hamzajaved1213@gmail.com' }
-});
+/* A page shared WITH this account. `shared` is what openShared() sets, and it
+   is the only way someone else's page can be in memory at all. */
+const viewer = (app) => app.setState(s => ({
+  pages: { ...s.pages, p1: { ...s.pages.p1, shared: true, owner: 'u2', ownerName: 'Ali' } },
+  user: { uid: 'u1', name: 'Tester', email: 'me@example.com' }
+}));
 
 describe('B7 — who may write history', () => {
   it('a viewer cannot take a snapshot', async () => {
