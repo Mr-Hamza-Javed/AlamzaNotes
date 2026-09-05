@@ -48,17 +48,17 @@ template itself.
 
 | File | Lines | What it owns |
 | --- | ---: | --- |
-| `lib/part-data.js` | 358 | Reading and writing state safely |
+| `lib/part-data.js` | 363 | Reading and writing state safely |
 | `lib/part-editor.js` | 1091 | The typing surface |
-| `lib/part-pages.js` | 523 | Moving between pages, and the page tree |
+| `lib/part-pages.js` | 526 | Moving between pages, and the page tree |
 | `lib/part-versions.js` | 686 | Snapshots, diff and restore |
 | `lib/part-blocks.js` | 278 | Block structure |
-| `lib/part-database.js` | 1415 | Tables |
+| `lib/part-database.js` | 1419 | Tables |
 | `lib/part-drag.js` | 368 | Dragging |
-| `lib/part-tools.js` | 1441 | Everything else the page needs |
-| `lib/part-menus.js` | 1604 | What menus, modals and sheets contain |
-| `lib/part-render.js` | 779 | What the template receives |
-| `index.dc.html` | 2340 | template + state, lifecycle, persist |
+| `lib/part-tools.js` | 1647 | Everything else the page needs |
+| `lib/part-menus.js` | 1648 | What menus, modals and sheets contain |
+| `lib/part-render.js` | 804 | What the template receives |
+| `index.dc.html` | 2388 | template + state, lifecycle, persist |
 
 ## Method index
 
@@ -78,7 +78,7 @@ Grep this instead of the codebase.
 
 **`lib/part-drag.js`** — `rowGrab`, `patchDb`
 
-**`lib/part-tools.js`** — `escapeKey`, `readHtml`, `histFor`, `histJson`, `syncTail`, `applyHist`, `undo`, `redo`, `isAncestor`, `repair`, `mergePrev`, `removeAt`, `caretX`, `caretToX`, `histJsonDeep`, `syncTailDeep`, `applyMark`, `setBlockColor`, `openSearch`, `flashBlock`, `changedIds`, `tableEdit`, `tableAdd`, `tableDel`, `commentCount`, `addComment`, `resolveComment`, `origin`, `pageUrl`, `shareUrl`, `inviteUrl`, `publishSnapshot`, `setPublished`, `republish`, `openPublic`, `publicSlugFromUrl`, `sendInvite`, `invitedMe`, `answerInvite`, `iconEl`, `childrenOf`, `reconcileChildren`, `stripSubpage`, `movePage`, `navGrab`, `startResize`, `deepDuplicatePage`, `lassoStart`, `trackAnchor`, `pageStats`, `headingHits`, `tableNav`, `upModal`
+**`lib/part-tools.js`** — `escapeKey`, `readHtml`, `histFor`, `histJson`, `syncTail`, `applyHist`, `undo`, `redo`, `isAncestor`, `repair`, `mergePrev`, `removeAt`, `caretX`, `caretToX`, `histJsonDeep`, `syncTailDeep`, `applyMark`, `setBlockColor`, `openSearch`, `flashBlock`, `changedIds`, `tableEdit`, `tableAdd`, `tableDel`, `commentCount`, `addComment`, `resolveComment`, `origin`, `pageUrl`, `shareUrl`, `inviteUrl`, `publishSnapshot`, `setPublished`, `pubKey`, `publishInSync`, `republish`, `schedulePublish`, `flushPublish`, `openPublic`, `publicSlugFromUrl`, `shareRoles`, `shareMembers`, `sendInvite`, `revokeInvite`, `syncShared`, `flushShareSync`, `scheduleShareSync`, `refreshInbox`, `answerInvite`, `openShared`, `leaveShared`, `iconEl`, `childrenOf`, `reconcileChildren`, `stripSubpage`, `movePage`, `navGrab`, `startResize`, `deepDuplicatePage`, `lassoStart`, `trackAnchor`, `pageStats`, `headingHits`, `tableNav`, `upModal`
 
 **`lib/part-menus.js`** — `extraVals`
 

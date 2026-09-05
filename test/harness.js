@@ -105,6 +105,69 @@ function makeStore(over) {
     vmetaKnown(pageId) { return !!s._vmetaSeen[pageId]; },
     markVersionMeta(pageId) { s.log('markVersionMeta', [pageId]); s._vmetaSeen[pageId] = true; },
     purgeDatabases() { return Promise.resolve(0); },
+
+    /* ---- sharing: the server side, in memory ---- */
+    inboxes: {},                 // emailKey -> { inviteId: invite }
+    sharedDocs: {},              // pageId   -> { o, n, t, i, b, d, m }
+    published: {},               // slug     -> body
+    emailKey(email) {
+      const e = String(email || '').trim().toLowerCase();
+      if (!e || /[#$\[\]\/]/.test(e) || e.indexOf('@') < 0) return null;
+      return e.replace(/\./g, ',');
+    },
+    myEmailKey() { return s.user ? s.emailKey(s.user.email) : null; },
+    sendInviteTo(email, invite) {
+      s.log('sendInviteTo', [email, invite.id]);
+      const k = s.emailKey(email);
+      if (!k) return Promise.resolve(false);
+      (s.inboxes[k] = s.inboxes[k] || {})[invite.id] = JSON.parse(JSON.stringify(invite));
+      return Promise.resolve(true);
+    },
+    loadInbox() {
+      s.log('loadInbox', []);
+      const k = s.myEmailKey();
+      const box = (k && s.inboxes[k]) || {};
+      return Promise.resolve(Object.keys(box).map(x => box[x]).sort((a, b) => (b.at||0)-(a.at||0)));
+    },
+    dropInvite(id, email) {
+      s.log('dropInvite', [id, email]);
+      const k = email ? s.emailKey(email) : s.myEmailKey();
+      if (k && s.inboxes[k]) {
+        if (id) delete s.inboxes[k][id];
+        else Object.keys(s.inboxes[k]).forEach(x => { delete s.inboxes[k][x]; });
+      }
+      return Promise.resolve(true);
+    },
+    putShared(pageId, payload, members) {
+      s.log('putShared', [pageId, (members || []).slice()]);
+      const m = {};
+      (members || []).forEach(e => { const k = s.emailKey(e); if (k) m[k] = true; });
+      s.sharedDocs[pageId] = { o: (s.user && s.user.uid) || 'u1', n: (s.user && s.user.name) || '',
+                               t: payload.t || '', i: payload.i || '', b: payload.b || [],
+                               d: payload.d || {}, m, u: Date.now() };
+      return Promise.resolve(true);
+    },
+    loadShared(pageId) {
+      s.log('loadShared', [pageId]);
+      const v = s.sharedDocs[pageId];
+      if (!v) return Promise.resolve(null);
+      /* the rules only let a member read it — model that, or the test proves
+         nothing about who can actually see the page */
+      const k = s.myEmailKey();
+      if (v.o !== ((s.user && s.user.uid) || 'u1') && !(k && v.m[k])) return Promise.resolve(null);
+      return Promise.resolve({ o: v.o, owner: v.n, t: v.t, i: v.i,
+                               b: JSON.parse(JSON.stringify(v.b)), d: v.d, u: v.u });
+    },
+    dropShared(pageId) { s.log('dropShared', [pageId]); delete s.sharedDocs[pageId]; return Promise.resolve(true); },
+    publishPage(slug, payload, password) {
+      s.log('publishPage', [slug, password ? 'sealed' : 'plain']);
+      s.published[slug] = password
+        ? { o: 'u1', u: Date.now(), enc: { ct: 'sealed:' + password } }
+        : { o: 'u1', u: Date.now(), t: payload.t, i: payload.i, b: payload.b, d: payload.d };
+      return Promise.resolve(true);
+    },
+    unpublishPage(slug) { delete s.published[slug]; return Promise.resolve(true); },
+
     write() {}, flush() {}, reset() {}
   };
   return Object.assign(s, over || {});
@@ -156,6 +219,9 @@ function makeApp(initial, storeOver) {
   app._realToast = realToast;
 
   Object.assign(app.state, initial || {});
+  /* the real adapter knows who is signed in; the stub has to as well, or
+     "is this inbox mine?" cannot be asked */
+  store.user = app.state.user || null;
   app.store = store;
   app.sandbox = sandbox;
   return app;

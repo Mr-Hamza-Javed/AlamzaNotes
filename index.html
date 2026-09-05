@@ -209,6 +209,21 @@ button:active{transform:scale(.985);opacity:.85}
         </div>
       </sc-if>
 
+      <sc-if value="{{ hasShared }}" hint-placeholder-val="{{ false }}">
+        <div style="height:14px"></div>
+        <div style="padding:0 8px 5px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)">Shared with me</div>
+        <sc-for list="{{ sharedList }}" as="sp" hint-placeholder-count="2">
+          <div onClick="{{ sp.open }}" style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;cursor:pointer;background:{{ sp.bg }}" style-hover="background:var(--hover)">
+            <span style="flex:none;display:grid;place-items:center;width:16px">{{ sp.iconEl }}</span>
+            <span style="flex:1;min-width:0">
+              <span style="display:block;font-size:14px;font-weight:{{ sp.weight }};color:{{ sp.color }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ sp.title }}</span>
+              <span style="display:block;font-size:11px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">from {{ sp.owner }}</span>
+            </span>
+            <button onClick="{{ sp.leave }}" title="Remove from my sidebar" aria-label="Remove from my sidebar" style="flex:none;width:22px;height:22px;border-radius:4px;color:var(--faint);font-size:13px;display:grid;place-items:center" style-hover="background:var(--hover);color:var(--text)">✕</button>
+          </div>
+        </sc-for>
+      </sc-if>
+
       <div style="height:10px"></div>
       <button onClick="{{ openTrash }}" style="width:100%;display:flex;align-items:center;gap:9px;padding:5px 8px;border-radius:4px;color:var(--muted);font-size:14px;font-weight:500;background:{{ trashBg }}" style-hover="background:var(--hover);color:var(--text)">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"></path></svg>
@@ -394,6 +409,13 @@ button:active{transform:scale(.985);opacity:.85}
             <sc-if value="{{ roleCanComment }}" hint-placeholder-val="{{ false }}">
               <button onClick="{{ openRoleComments }}" style="height:28px;padding:0 12px;border-radius:4px;font-size:12.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover)">Comments</button>
             </sc-if>
+          </div>
+        </sc-if>
+        <sc-if value="{{ sharedBanner }}" hint-placeholder-val="{{ false }}">
+          <div style="position:sticky;top:0;z-index:6;display:flex;align-items:center;gap:10px;padding:9px 16px;background:var(--accent-soft);border-bottom:1px solid var(--accent-tint)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"></path><path d="M16 6l-4-4-4 4M12 2v13" stroke-linecap="round"></path></svg>
+            <span style="flex:1;min-width:0;font-size:13px;color:var(--text)">{{ sharedBannerText }}</span>
+            <button onClick="{{ leaveThisShare }}" style="flex:none;height:28px;padding:0 12px;border-radius:4px;border:1px solid var(--accent-tint);font-size:12.5px;font-weight:500;color:var(--accent);white-space:nowrap" style-hover="background:var(--surface)">Remove</button>
           </div>
         </sc-if>
         <sc-if value="{{ isTrashed }}" hint-placeholder-val="{{ false }}">
@@ -1495,6 +1517,12 @@ button:active{transform:scale(.985);opacity:.85}
           <button onClick="{{ i.decline }}" style="height:30px;padding:0 12px;border-radius:4px;border:1px solid var(--border);font-size:12.5px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover);color:var(--text)">Decline</button>
         </div>
       </sc-for>
+      <sc-if value="{{ inboxLoading }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;justify-content:center;gap:9px;padding:36px 12px;color:var(--muted);font-size:13.5px">
+          <span style="flex:none;width:12px;height:12px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--accent);animation:aSpin .7s linear infinite"></span>
+          <span>Checking for invitations…</span>
+        </div>
+      </sc-if>
       <sc-if value="{{ inboxEmpty }}" hint-placeholder-val="{{ false }}">
         <div style="padding:36px 12px;text-align:center;color:var(--faint);font-size:13.5px">Nothing waiting for you.</div>
       </sc-if>
@@ -1539,6 +1567,14 @@ button:active{transform:scale(.985);opacity:.85}
             <span style="position:absolute;top:3px;left:{{ pwKnob }};width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .15s"></span>
           </button>
         </div>
+        <sc-if value="{{ showPwStatus }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px;line-height:1.5;color:{{ pwStatusColor }}">
+            <sc-if value="{{ pwSealing }}" hint-placeholder-val="{{ false }}">
+              <span style="flex:none;width:11px;height:11px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--accent);animation:aSpin .7s linear infinite"></span>
+            </sc-if>
+            <span style="flex:1;min-width:0">{{ pwStatus }}</span>
+          </div>
+        </sc-if>
         <button onClick="{{ previewPublic }}" style="height:36px;border-radius:5px;font-size:13px;font-weight:500;color:var(--muted)" style-hover="background:var(--hover)">Open the reader view</button>
       </div>
       </sc-if>
@@ -1546,12 +1582,10 @@ button:active{transform:scale(.985);opacity:.85}
     <div style="padding:16px 20px 20px">
       <div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);margin-bottom:9px">People with access</div>
       <div style="display:flex;gap:7px">
-        <input value="{{ inviteEmail }}" onChange="{{ setInviteEmail }}" placeholder="Add an email" style="flex:1;min-width:0;height:38px;border-radius:5px;border:1px solid var(--border);background:var(--canvas);padding:0 12px;font-size:13.5px;outline:none" />
-        <select value="{{ inviteRole }}" onChange="{{ setInviteRole }}" style="height:38px;border-radius:5px;border:1px solid var(--border);background:var(--canvas);padding:0 8px;font-size:13px;outline:none;cursor:pointer">
-          <option value="viewer">Viewer</option><option value="commenter">Commenter</option><option value="editor">Editor</option>
-        </select>
-        <button onClick="{{ addInvite }}" style="height:38px;padding:0 14px;border-radius:5px;border:1px solid var(--border);font-size:13px;font-weight:600" style-hover="background:var(--hover)">Invite</button>
+        <input value="{{ inviteEmail }}" onChange="{{ setInviteEmail }}" onKeyDown="{{ inviteKey }}" placeholder="Add an email" style="flex:1;min-width:0;height:38px;border-radius:5px;border:1px solid var(--border);background:var(--canvas);padding:0 12px;font-size:13.5px;outline:none" />
+        <button onClick="{{ addInvite }}" disabled="{{ inviteOff }}" style="height:38px;padding:0 14px;border-radius:5px;border:1px solid var(--border);font-size:13px;font-weight:600;color:{{ inviteColor }}" style-hover="background:var(--hover)">Invite</button>
       </div>
+      <div style="margin-top:7px;font-size:12px;color:var(--faint);line-height:1.5">{{ shareModeNote }}</div>
       <div style="margin-top:10px;display:flex;flex-direction:column;gap:2px">
         <div style="display:flex;align-items:center;gap:10px;padding:7px 4px">
           <span style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:11px;font-weight:600">{{ userInitial }}</span>
@@ -1562,10 +1596,8 @@ button:active{transform:scale(.985);opacity:.85}
           <div style="display:flex;align-items:center;gap:10px;padding:7px 4px">
             <span style="width:28px;height:28px;border-radius:50%;background:{{ i.color }};color:#fff;display:grid;place-items:center;font-size:11px;font-weight:600">{{ i.initial }}</span>
             <span style="flex:1;min-width:0;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ i.email }}</span>
-            <select value="{{ i.role }}" onChange="{{ i.setRole }}" style="height:28px;border-radius:4px;border:1px solid var(--border);background:var(--canvas);font-size:12px;padding:0 5px;cursor:pointer">
-              <option value="viewer">Viewer</option><option value="commenter">Commenter</option><option value="editor">Editor</option>
-            </select>
-            <button onClick="{{ i.remove }}" style="width:26px;height:26px;border-radius:4px;color:var(--faint);font-size:13px" style-hover="background:var(--hover);color:var(--del-fg)">✕</button>
+            <span style="flex:none;font-size:12.5px;color:var(--muted);white-space:nowrap">{{ i.role }}</span>
+            <button onClick="{{ i.remove }}" title="Remove access" aria-label="Remove access" style="flex:none;width:26px;height:26px;border-radius:4px;color:var(--faint);font-size:13px" style-hover="background:var(--hover);color:var(--del-fg)">✕</button>
           </div>
         </sc-for>
       </div>
@@ -1999,7 +2031,10 @@ class Component extends DCLogic {
     focusId: null, hoverId: null, dragId: null, dropId: null,
     panel: null, modal: null, sheet: null, menu: null, slash: null,
     dbView: {}, dbQuery: {}, roVersion: null, toast: null, cellEdit: null,
-    restoring: false, capturing: false,
+    restoring: false, capturing: false, sealing: false,
+    /* pages other accounts have shared with this one, and the invitations
+       waiting in the shared inbox node — see part-tools.js */
+    shares: [], inbox: [], inboxLoaded: false,
     pubSlug: null, pubDoc: null, pubLoading: false, pubLocked: false, pubMissing: false,
     diffA: null, diffB: 'current', diffMode: 'split',
     isMobile: false, sidebarOpen: true, search: '', kbOpen: false
@@ -2199,6 +2234,7 @@ class Component extends DCLogic {
         pageId: this.resolvePageId(data.pages, st.pageId),
         prefs: Object.assign({ theme: this.props.startTheme || 'light', fullWidth: false, sourceView: false, sidebarW: 264 }, data.prefs || {}, this.props.startTheme ? { theme: this.props.startTheme } : {}),
         invites: data.invites || [],
+        shares: data.shares || [],
         workspace: data.workspace || { name: 'Alamza', icon: '🛰️' },
         /* With a real Firebase project configured we never fake a session —
            the user signs in with Google or picks the demo. */
@@ -2214,6 +2250,9 @@ class Component extends DCLogic {
         if (this.state.pageId) this.ensureBody(this.state.pageId);
         /* boot resolves the first page without going through openPage */
         this.syncVersionMeta();
+        /* pages shared with this account, and anything new waiting for it */
+        (this.state.shares || []).forEach(x => this.openShared(x.pageId));
+        this.refreshInbox();
         /* any table whose rows are already in hand — the demo adapter has all
            of them, a warm cache has some — can repair its row pages now rather
            than waiting to be opened */
@@ -2233,6 +2272,10 @@ class Component extends DCLogic {
       if (!remote || !remote.pages) return;
       this.setState(st => {
         const pages = {};
+        /* A page shared WITH this account lives in memory and in nobody's
+           index, so a delta rebuilt from the index would drop it off the
+           sidebar every time anything else changed. */
+        Object.keys(st.pages).forEach(id => { if (st.pages[id].shared) pages[id] = st.pages[id]; });
         Object.keys(remote.pages).forEach(id => {
           const inc = remote.pages[id], had = st.pages[id];
           /* An index delta carries no body. Keep the one we already have, or
@@ -2253,7 +2296,8 @@ class Component extends DCLogic {
         }
         const pageId = this.resolvePageId(pages, st.pageId, true);
         return { pages, pageId, dbs: remote.dbs ? this.normAllDbs(remote.dbs) : st.dbs, prefs: remote.prefs || st.prefs,
-                 workspace: remote.workspace || st.workspace, invites: remote.invites || st.invites };
+                 workspace: remote.workspace || st.workspace, invites: remote.invites || st.invites,
+                 shares: remote.shares || st.shares };
       }, () => {
         if (this.state.pageId) this.ensureBody(this.state.pageId);
         /* a delta can re-point pageId at a page openPage never ran for */
@@ -2321,13 +2365,17 @@ class Component extends DCLogic {
     /* keep the store's copy of the open body current, so its LRU cache and the
        dirty check both see what the user actually has on screen */
     const cur = s.pages[s.pageId];
-    if (cur && cur.blocks && AStore.putBody) AStore.putBody(s.pageId, cur.blocks);
+    /* never cache a page shared WITH this account as if it were ours — the
+       body cache is keyed by page id, and the owner is the one who decides
+       what that page says */
+    if (cur && cur.blocks && !cur.shared && AStore.putBody) AStore.putBody(s.pageId, cur.blocks);
     /* keep the store's row cache in step with what is on screen */
     if (AStore.putRows) Object.keys(s.dbs).forEach(id => {
       const d = s.dbs[id];
       if (d && d.rows) AStore.putRows(id, d.rows);
     });
-    AStore.write({ pages: s.pages, dbs: s.dbs, prefs: s.prefs, workspace: s.workspace, invites: s.invites || [] });
+    AStore.write({ pages: s.pages, dbs: s.dbs, prefs: s.prefs, workspace: s.workspace,
+                   invites: s.invites || [], shares: s.shares || [] });
   }
 
 }

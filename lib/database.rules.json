@@ -19,6 +19,51 @@
       }
     },
 
+    "inbox": {
+      "$emailKey": {
+        ".read": "auth != null && auth.token.email != null && auth.token.email_verified == true && $emailKey === auth.token.email.toLowerCase().replace('.', ',')",
+
+        "$inviteId": {
+          ".write": "auth != null && auth.token.email != null && auth.token.email_verified == true && (($emailKey === auth.token.email.toLowerCase().replace('.', ',')) || (!data.exists() && newData.child('from').val() === auth.uid) || (data.exists() && data.child('from').val() === auth.uid))",
+
+          ".validate": "newData.hasChildren(['id', 'from', 'pageId', 'role', 'at']) && newData.child('from').val() === auth.uid && newData.child('role').val() === 'viewer'",
+
+          "id":        { ".validate": "newData.isString() && newData.val().length <= 64" },
+          "from":      { ".validate": "newData.isString() && newData.val().length <= 128" },
+          "fromName":  { ".validate": "newData.isString() && newData.val().length <= 120" },
+          "fromEmail": { ".validate": "newData.isString() && newData.val().length <= 254" },
+          "pageId":    { ".validate": "newData.isString() && newData.val().length <= 64" },
+          "title":     { ".validate": "newData.isString() && newData.val().length <= 200" },
+          "icon":      { ".validate": "newData.isString() && newData.val().length <= 16" },
+          "role":      { ".validate": "newData.isString()" },
+          "at":        { ".validate": "newData.isNumber()" },
+          "$other":    { ".validate": false }
+        }
+      }
+    },
+
+    "shared": {
+      "$pageId": {
+        ".read": "auth != null && (data.child('o').val() === auth.uid || (auth.token.email != null && auth.token.email_verified == true && data.child('m').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))",
+
+        ".write": "auth != null && (data.exists() ? data.child('o').val() === auth.uid : newData.child('o').val() === auth.uid)",
+
+        ".validate": "newData.hasChildren(['o', 'u']) && newData.child('o').val() === auth.uid && newData.child('u').isNumber()",
+
+        "o": { ".validate": "newData.isString()" },
+        "u": { ".validate": "newData.isNumber()" },
+        "t": { ".validate": "newData.isString()" },
+        "i": { ".validate": "newData.isString()" },
+        "n": { ".validate": "newData.isString()" },
+        "b": {},
+        "d": {},
+        "m": {
+          "$emailKey": { ".validate": "newData.isBoolean()" }
+        },
+        "$other": { ".validate": false }
+      }
+    },
+
     "pub": {
       "$slug": {
         ".read": true,
