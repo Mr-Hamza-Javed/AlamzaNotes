@@ -152,7 +152,7 @@ describe('E — sharing a page with someone', () => {
   });
 
   it('the demo workspace says so instead of pretending', async () => {
-    const app = makeApp({ pages: { p1: page('p1') }, pageId: 'p1' }, { mode: 'local' });
+    const app = makeApp({ pages: { p1: page('p1') }, pageId: 'p1' }, { cloud: false });
     app.sendInvite('p1', 'someone@example.com', 'viewer');
     await settle();
     assert.includes(app.toasts.join(' | '), 'Sign in to share');
@@ -260,7 +260,7 @@ describe('E — the invitations badge', () => {
   });
 
   it('the demo workspace does not try to fetch shared pages', async () => {
-    const app = makeApp({ pages: {}, pageId: null, shares: [{ pageId: 'p9' }] }, { mode: 'local' });
+    const app = makeApp({ pages: {}, pageId: null, shares: [{ pageId: 'p9' }] }, { cloud: false });
     await app.openShared('p9');
     await settle();
     assert.deep(app.state.shares, [{ pageId: 'p9' }], 'a local workspace has no server to ask');

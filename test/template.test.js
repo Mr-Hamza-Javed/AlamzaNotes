@@ -105,6 +105,35 @@ describe('template', () => {
     void app;
   });
 
+  /* renderVals() branches on what the STORE says as well as on what the state
+     says — demo or not, configured or not, cloud or not. The screen list above
+     varies only the state, so half of those branches were never built, and a
+     ReferenceError in one of them survived a green run and reached the browser.
+     Every combination is cheap; run them all. */
+  it('renderVals never throws, whatever the store reports', () => {
+    const flags = ['demo', 'hasConfig', 'cloud', 'indexReady'];
+    const screens = [{}, { route: 'auth' }, { route: 'settings', setTab: 'data' },
+                     { modal: { kind: 'share' } }, { panel: 'versions' }];
+    const problems = [];
+
+    for (let bits = 0; bits < (1 << flags.length); bits++) {
+      for (const backendName of ['rtdb', 'firestore', 'rest', 'local', 'brand-new']) {
+        for (const patch of screens) {
+          const a = fullApp();
+          Object.assign(a.state, patch);
+          flags.forEach((f, i) => { a.store[f] = !!(bits & (1 << i)); });
+          a.store.backendName = backendName;
+          try { a.renderVals(); }
+          catch (e) {
+            const where = flags.filter((f, i) => bits & (1 << i)).join('+') || 'nothing set';
+            problems.push(where + ' / ' + backendName + ' / ' + JSON.stringify(patch) + ' -> ' + e.message);
+          }
+        }
+      }
+    }
+    assert.eq(problems.length, 0, 'renderVals threw:\n      ' + problems.slice(0, 6).join('\n      '));
+  });
+
   it('every sc-if / sc-for opens and closes', () => {
     const src = markup();
     ['sc-if', 'sc-for'].forEach(tag => {

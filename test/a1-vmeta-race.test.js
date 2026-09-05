@@ -39,7 +39,7 @@ describe('A1 — version metadata race', () => {
   });
 
   it('local/demo mode has nothing to fetch, so nothing is blocked', async () => {
-    const app = makeApp({ pages: { p1: page('p1') }, pageId: 'p1' }, { mode: 'local' });
+    const app = makeApp({ pages: { p1: page('p1') }, pageId: 'p1' }, { cloud: false });
     assert.ok(app.versionMetaKnown('p1'));
     app.createVersion('first');
     await settle();

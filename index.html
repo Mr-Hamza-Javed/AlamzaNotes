@@ -15,7 +15,16 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-<script src="lib/firebase-config.js"></script>
+<script src="lib/config.js"></script>
+<script src="lib/data/port.js"></script>
+<script src="lib/data/registry.js"></script>
+<script src="lib/data/firebase-app.js"></script>
+<script src="lib/data/auth.js"></script>
+<script src="lib/data/backend-local.js"></script>
+<script src="lib/data/backend-rtdb.js"></script>
+<script src="lib/data/backend-firestore.js"></script>
+<script src="lib/data/backend-rest.js"></script>
+<script src="lib/data/backend-routing.js"></script>
 <script src="lib/store.js"></script>
 <script src="lib/markdown.js"></script>
 <script src="lib/diff.js"></script>
@@ -2223,7 +2232,7 @@ class Component extends DCLogic {
          the network either: init() hands back the local mirror, so `loaded` is
          normally the real workspace and the app paints immediately. The empty
          shell is only ever shown on a genuinely first-ever sign-in. */
-      const waitingForRemote = AStore.mode === 'firebase' && !AStore.demo;
+      const waitingForRemote = AStore.cloud && !AStore.demo;
       const seed = waitingForRemote
         ? { pages: {}, dbs: {}, prefs: {}, workspace: { name: 'Alamza', icon: '' } }
         : (window.ASEED ? window.ASEED() : { pages: {}, dbs: {}, prefs: {} });
@@ -2238,9 +2247,9 @@ class Component extends DCLogic {
         workspace: data.workspace || { name: 'Alamza', icon: '🛰️' },
         /* With a real Firebase project configured we never fake a session —
            the user signs in with Google or picks the demo. */
-        user: user || (AStore.mode === 'local' && this.props.startSignedIn !== false
+        user: user || (!AStore.cloud && this.props.startSignedIn !== false
           ? { uid: 'demo', name: 'Alamza', email: 'demo@alamza.notes', photoURL: '', provider: 'demo' } : null),
-        route: (user || (AStore.mode === 'local' && this.props.startSignedIn !== false)) ? 'app' : 'auth'
+        route: (user || (!AStore.cloud && this.props.startSignedIn !== false)) ? 'app' : 'auth'
       }), () => {
         this.applyTheme(); this.syncDom();
         /* A published link is a whole session on its own: no workspace, no

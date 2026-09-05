@@ -48,7 +48,7 @@ template itself.
 
 | File | Lines | What it owns |
 | --- | ---: | --- |
-| `lib/part-data.js` | 363 | Reading and writing state safely |
+| `lib/part-data.js` | 377 | Reading and writing state safely |
 | `lib/part-editor.js` | 1091 | The typing surface |
 | `lib/part-pages.js` | 526 | Moving between pages, and the page tree |
 | `lib/part-versions.js` | 686 | Snapshots, diff and restore |
@@ -56,15 +56,15 @@ template itself.
 | `lib/part-database.js` | 1419 | Tables |
 | `lib/part-drag.js` | 368 | Dragging |
 | `lib/part-tools.js` | 1647 | Everything else the page needs |
-| `lib/part-menus.js` | 1648 | What menus, modals and sheets contain |
-| `lib/part-render.js` | 804 | What the template receives |
+| `lib/part-menus.js` | 1663 | What menus, modals and sheets contain |
+| `lib/part-render.js` | 810 | What the template receives |
 | `index.dc.html` | 2388 | template + state, lifecycle, persist |
 
 ## Method index
 
 Grep this instead of the codebase.
 
-**`lib/part-data.js`** — `page`, `resolvePageId`, `dbFor`, `activeBlocks`, `bodyReady`, `ensureBody`, `ensureBodies`, `needParent`, `digestMap`, `digestFor`, `rowsReady`, `ensureRows`, `repairRowPages`, `repairAllRowPages`, `dbIdsIn`, `ensureRowsFor`, `myRole`, `canEdit`, `canComment`, `canWriteHistory`, `isReadOnly`, `patchPage`, `setBlocks`, `locate`, `miniRow`, `mutate`, `_mutate`
+**`lib/part-data.js`** — `page`, `resolvePageId`, `dbFor`, `activeBlocks`, `bodyReady`, `ensureBody`, `ensureBodies`, `needParent`, `digestMap`, `digestFor`, `rowsReady`, `ensureRows`, `repairRowPages`, `repairAllRowPages`, `dbIdsIn`, `ensureRowsFor`, `backendLabel`, `myRole`, `canEdit`, `canComment`, `canWriteHistory`, `isReadOnly`, `patchPage`, `setBlocks`, `locate`, `miniRow`, `mutate`, `_mutate`
 
 **`lib/part-editor.js`** — `nearView`, `syncDom`, `blockHtml`, `elRef`, `mathRef`, `gutRef`, `paintGutter`, `afterEdit`, `highlightNow`, `codeEdit`, `setCodeText`, `readBlock`, `editText`, `selectBlockRange`, `growBlockSel`, `onInput`, `caretRect`, `clearTrigger`, `insertMention`, `tryShortcut`, `insertAfter`, `removeBlock`, `onKey`, `wrapSel`, `onPaste`, `onFocus`, `onBlur`
 
@@ -97,6 +97,8 @@ Grep this instead of the codebase.
 | Something shows the wrong value in the UI | `part-render.js` |
 | What the UI looks like | the template in `index.dc.html` |
 | Loading, saving, bandwidth | `lib/store.js` |
+| Which database the app uses | `lib/config.js` |
+| Teaching the app a new database | `lib/data/port.js`, then a new `lib/data/backend-*.js` |
 
 ## Tests
 
@@ -109,23 +111,91 @@ No dependencies and no build. `test/harness.js` assembles the same prototype
 `lib/parts.js` builds, inside a Node `vm` context, and hands back a live
 instance with a recording store stub — so the parts can be driven exactly as
 the app drives them, without a DOM. `setState` commits synchronously there, and
-`loadRealStore()` runs the real `lib/store.js` against a Firebase stub whose
-writes can be made to fail on command.
+`loadRealStore()` runs the real `lib/store.js` against a stub BACKEND whose
+writes can be made to fail on command — or, given `{ backend: fn }`, against a
+real one. `makeDataContext()` loads `lib/data/*` on its own, with no app and no
+store, which is what lets the conformance suite drive a backend directly.
+`test/fake-firestore.js` is a Firestore that lives in a Map and rejects a nested
+array exactly as the real one does, so `lib/data/backend-firestore.js` is tested
+for real without a network.
 
 `test/template.test.js` is the one that guards `index.html`: it parses the app
 shell and checks that every `{{ binding }}` in the markup is actually produced
-by `renderVals()`, which otherwise fails silently as a blank node.
+by `renderVals()`, which otherwise fails silently as a blank node — and runs
+`renderVals()` over every combination of store flags, because it branches on
+what the STORE says as well as on the state and a crash in one of those
+branches once survived a green run all the way into the browser.
 
-## Data layer (unchanged by the split)
+`opts.register` on `loadRealStore()` registers a backend and an auth provider
+BEFORE `lib/store.js` is evaluated, which is what lets a test drive the real
+boot — the auth callback, the layout check, the listeners — rather than only
+the parts reachable afterwards.
+
+## Data layer
 
 ```
-lib/store.js         one API, two adapters (Firebase RTDB / local)
-lib/markdown.js      markdown <-> blocks, and the marker map the caret needs
-lib/diff.js          block + word level diff
-lib/seed.js          demo workspace
-lib/firebase-config.js
-lib/database.rules.json
+lib/config.js               THE config file — which database, and every setting
+lib/data/port.js            the contract every backend implements
+lib/data/registry.js        register a backend; turn the config into a live one
+lib/data/firebase-app.js    one shared Firebase app + SDK import
+lib/data/auth.js            who is signed in: firebase | local | rest
+lib/data/backend-local.js       this browser (localStorage)
+lib/data/backend-rtdb.js        Firebase Realtime Database
+lib/data/backend-firestore.js   Cloud Firestore
+lib/data/backend-rest.js        your own API
+lib/data/backend-routing.js     several of the above at once, split by kind
+lib/store.js                the app-facing API — caching, diffing, cost, retry
+lib/markdown.js             markdown <-> blocks, and the marker map the caret needs
+lib/diff.js                 block + word level diff
+lib/seed.js                 demo workspace
+lib/database.rules.json     security rules for the Realtime Database
+lib/firestore.rules         security rules for Firestore
 ```
+
+### How a database is chosen
+
+`lib/config.js` has one line — `backend:` — and everything else follows from it.
+The registry resolves that line to a backend, records WHY in `AlamzaData.chose`,
+and Settings → Data & sync prints the answer. `lib/store.js` names no database
+at all; it asks the port to read a path, write a patch, or watch a collection.
+
+`AStore.cloud` is the question the app actually asks — is there a server, or is
+this browser the only copy? `AStore.mode` is the name that question used to
+have; it is now derived from `cloud` and kept only for anything outside this
+repo that still reads it.
+
+### Adding a database
+
+Two steps, and neither is in a file that already exists:
+
+1. Write `lib/data/backend-<yours>.js` ending in
+   `AlamzaData.registerBackend('yours', factory)`.
+2. Add its `<script>` to `index.html` and a `yours: { … }` block to
+   `lib/config.js`.
+
+`test/f1-port-conformance.test.js` then holds it to the same behaviour as every
+other backend — that check is what makes swapping one a config change rather
+than a debugging session.
+
+### The addresses
+
+Everything the app stores has a logical path, and those paths are the app's
+vocabulary rather than any database's. A backend maps them to wherever it keeps
+bytes:
+
+| logical | Realtime Database | Firestore |
+| --- | --- | --- |
+| `idx/<pageId>` | `workspaces/<uid>/idx/<pageId>` | `workspaces/<uid>/idx/<pageId>` |
+| `meta` | `workspaces/<uid>/meta` | `workspaces/<uid>/_/meta` |
+| `dbrow/<dbId>/<rowId>` | same, nested | `workspaces/<uid>/dbrow/<dbId>/_/<rowId>` |
+| `pub/<slug>` | `pub/<slug>` | `pub/<slug>` |
+| `inbox/<key>/<id>` | `inbox/<key>/<id>` | `inbox/<key>/_/<id>` |
+
+Firestore has to alternate collection and document, so an odd-length path gains
+one `_` segment before its last. Its documents also cannot hold an array inside
+an array, and a page's blocks are full of them, so the value is stored as one
+JSON field with the handful of fields a security rule must read copied out
+beside it.
 
 `requirements.md` remains the specification — behaviour, contracts and the
 reasons behind them. This file is only a map.
