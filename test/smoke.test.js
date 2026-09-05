@@ -49,3 +49,45 @@ describe('harness', () => {
 });
 
 module.exports = { page };
+
+describe('harness — the stub cannot drift from the real store', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const { makeStore, loadRealStore } = require('./harness');
+
+  it('the store stub answers every field the app reads off AStore', () => {
+    /* The gap this closes cost a browser-only crash: the stub had no
+       `hasConfig`, so every test took the "nothing is configured" branch of the
+       sign-in screen and a ReferenceError in the other branch went unseen
+       through 246 green tests.
+
+       So the app is asked what it actually reads, rather than a list being
+       kept by hand. */
+    const wanted = new Set();
+    fs.readdirSync(path.join(__dirname, '..', 'lib'))
+      .filter(f => /^part-.*\.js$/.test(f))
+      .forEach(f => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'lib', f), 'utf8');
+        let m; const re = /\bAStore\.([A-Za-z_$][\w$]*)/g;
+        while ((m = re.exec(src))) wanted.add(m[1]);
+      });
+
+    const stub = makeStore();
+    const missing = [...wanted].filter(k => !(k in stub));
+    assert.eq(missing.length, 0,
+      'the app reads these off AStore and the stub does not have them: ' + missing.join(', '));
+  });
+
+  it('and every field it claims is one the real store really has', () => {
+    /* the other direction: a stub field the real store dropped is a test
+       passing against an API that no longer exists */
+    const { store } = loadRealStore();
+    const stub = makeStore();
+    const invented = ['calls', 'log', 'vdata', 'vmetaStore', 'bodies', 'rows', 'inboxes',
+                      'sharedDocs', 'published', '_vmetaSeen', 'markVersionMeta'];
+    const strays = Object.keys(stub)
+      .filter(k => invented.indexOf(k) < 0 && !(k in store));
+    assert.eq(strays.length, 0,
+      'the stub has fields the real store does not: ' + strays.join(', '));
+  });
+});

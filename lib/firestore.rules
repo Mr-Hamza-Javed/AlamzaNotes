@@ -1,0 +1,125 @@
+/* =============================================================================
+ * Alamza Notes — Firestore security rules
+ * =============================================================================
+ *
+ * Deploy these when `backend` in lib/config.js is set to 'firestore'.
+ *   Firebase console -> Build -> Firestore Database -> Rules -> paste -> Publish
+ *
+ * They are the Firestore twin of lib/database.rules.json and enforce exactly
+ * the same four statements. WITHOUT THEM the database is either wide open or
+ * shut, and neither is what the app expects — a page shared with one person
+ * would be readable by everyone, or by no one.
+ *
+ *   1. A workspace belongs to one account and nobody else can touch it.
+ *   2. A published page is readable by the world and writable by its owner.
+ *   3. An invitation is readable only by the account whose VERIFIED email it
+ *      was addressed to.
+ *   4. A page lent to someone is readable by its owner and by the people named
+ *      in it, and writable only by its owner.
+ *
+ * THE PATHS. lib/data/backend-firestore.js turns the app's own paths into
+ * Firestore's alternating collection/document form by inserting `_` where a
+ * segment is needed. That is why `_` appears below — `inbox/<key>/_/<id>` is
+ * one invitation, and `workspaces/<uid>/_/meta` is the preferences document.
+ * The rules have to know the stored shape; nothing else does.
+ *
+ * THE EMAIL KEY. Firestore allows more in a document id than the Realtime
+ * Database does, but the two backends must agree on the key or an invitation
+ * written by one is invisible to the other. Both lowercase the address and turn
+ * its dots into commas. `emailKey()` below does the same to the token, which is
+ * how "this inbox is mine" is answered by the SERVER rather than by the client
+ * asking nicely.
+ * ========================================================================== */
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    /* A verified email, keyed the same way the client keys it. Unverified is
+       treated as no email at all: anyone can type an address into a sign-up
+       form, and an unverified one would let them read someone else's
+       invitations. */
+    function emailKey() {
+      return (signedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email_verified == true)
+        ? request.auth.token.email.lower().replace('\\.', ',')
+        : '__none__';
+    }
+
+    /* ---- 1. the workspace ------------------------------------------------
+       Everything under workspaces/<uid> — the index, the page bodies, the
+       tables, the snapshots, the preferences — is that one account's, at every
+       depth. `{document=**}` covers the subcollections the mapping creates
+       (dbrow/<dbId>/_/<rowId>, vdata/<pageId>/_/<vId>) without naming them, so
+       a new kind of data added later is private by default rather than by
+       somebody remembering to come back here. */
+    match /workspaces/{uid}/{document=**} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    /* ---- 2. a page published to the web ----------------------------------
+       World readable, which is the entire point of a public link. A password
+       does not gate this — it ENCRYPTS the stored copy, because a rule cannot
+       hide a document it has just made readable. The bytes are sealed with
+       AES-GCM under a key derived from the password, so what a stranger can
+       fetch without it is noise.
+
+       Writable only by the account named in `o`, and `o` cannot be changed to
+       someone else's uid on the way past. */
+    match /pub/{slug} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.o == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.o == request.auth.uid
+                            && request.resource.data.o == request.auth.uid;
+    }
+
+    /* ---- 3. an invitation ------------------------------------------------
+       Readable ONLY by the inbox it was addressed to. Writable by its sender,
+       so an invitation can be sent and later withdrawn, and by the recipient,
+       so accepting or declining can clear it.
+
+       `role` is pinned to 'viewer' because that is the only role the app can
+       currently honour. A share that grants more than the app enforces is a
+       promise the code does not keep, so the rule refuses to store one. */
+    match /inbox/{emailKeyPath}/_/{inviteId} {
+      allow read, delete: if emailKeyPath == emailKey()
+                          || (signedIn() && resource.data.from == request.auth.uid);
+      allow create, update: if signedIn()
+                            && request.resource.data.from == request.auth.uid
+                            && request.resource.data.role == 'viewer';
+    }
+    /* the collection itself is listed when the inbox is opened */
+    match /inbox/{emailKeyPath}/_/{inviteId=**} {
+      allow read: if emailKeyPath == emailKey();
+    }
+
+    /* ---- 4. a page lent to one other account ------------------------------
+       Read by the owner and by anyone whose email key is set to true in `m`.
+       `m` is written by the owner on the same write that stores the content, so
+       removing someone and re-sending the page is ONE action and there is no
+       window in which they are removed from the list but can still read it.
+
+       `.get(key, false)` rather than `m[key]`: a document whose member map is
+       absent must deny rather than error, or a half-written share becomes an
+       unreadable page instead of a private one. */
+    match /shared/{pageId} {
+      allow read: if signedIn()
+                  && (resource.data.o == request.auth.uid
+                      || resource.data.get('m', {}).get(emailKey(), false) == true);
+      allow create: if signedIn() && request.resource.data.o == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.o == request.auth.uid
+                            && request.resource.data.o == request.auth.uid;
+    }
+
+    /* Anything not matched above is denied. Firestore's default, stated so
+       that it is a decision rather than an omission. */
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

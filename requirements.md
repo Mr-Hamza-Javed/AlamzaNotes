@@ -29,10 +29,13 @@ restored (replacing the current page, or as a brand new version).
 | --- | --- |
 | Entry file | `index.html` — launches `index.dc.html`, which holds the whole app |
 | Rendering | Design Component, single streaming file, inline styles only |
-| Data | `lib/store.js` — one API, two adapters |
-| Default adapter | **Firebase Realtime Database** + Firebase Auth (Google) — `lib/firebase-config.js` holds the `alamza-notes` project |
+| Data | `lib/store.js` — one API over the storage port (`lib/data/port.js`) |
+| Backends | **Realtime Database**, **Cloud Firestore**, **your own API**, **this browser**, or **several at once**. All five implement the same six-method port; `lib/store.js` names none of them. |
+| Choosing one | One line — `backend:` in `lib/config.js`. `'auto'` picks the first configured, preferring the Realtime Database over Firestore so that merely preparing to try Firestore never moves a live account. |
+| Default | **Firebase Realtime Database** + Firebase Auth (Google), the `alamza-notes` project, configured in `lib/config.js`. |
 | Demo adapter | **Local** (`localStorage`, seeded workspace). Offered as **Explore the demo** on the sign-in screen; the choice is remembered until the user leaves it from Settings → Data & sync. |
-| Switching | Automatic from the config. A filled config = Firebase; an empty config = local. The demo flag overrides a filled config for that browser only. |
+| Switching | From `lib/config.js` and nowhere else. A backend whose block is empty is unavailable and the app falls back to this browser, saying why in Settings → Data & sync. The demo flag overrides any config for that browser only. |
+| Sign-in | Chosen separately from storage (`auth:` in `lib/config.js`), because in practice you keep Google sign-in while moving the data. |
 | Libraries (CDN) | `highlight.js` (code syntax), `KaTeX` (math), Firebase JS SDK v10 (modular, dynamically imported only when configured) |
 | Fonts | Instrument Sans (UI + content), Instrument Serif (wordmark, display), JetBrains Mono (code) |
 | Themes | Light + Dark + System. Persisted per user. |
@@ -588,9 +591,14 @@ databases, `<details>` for toggles, `$$` for math, links for subpages.
 
 ## 5b. Data & sync
 
-One API, two adapters (`lib/store.js`). Local/demo keeps a single flat blob in
-`localStorage`, everything inline. Firebase mode uses the Realtime Database,
-shaped around the one number that plan bills:
+One API for the app, and **no database named anywhere in it**. `lib/store.js`
+owns the index/body split, the local cache, the write diff, the retry and the
+cost meter; a BACKEND owns the bytes. The two meet at the port in
+`lib/data/port.js` — six methods — and which backend is behind it is one line of
+`lib/config.js`. §5c is the full contract.
+
+The layout below is the Realtime Database's, which is the shipped default and
+the shape the whole design was drawn around:
 
 > **RTDB charges for bytes DOWNLOADED (10 GB/month) and stored (1 GB).
 > Uploads are free.** Every decision below follows from that.
@@ -779,6 +787,124 @@ skeletons until then.
 
 Security rules live in `lib/database.rules.json` — a workspace is readable and
 writable only by its own `uid`.
+
+## 5c. Pluggable storage
+
+The app used to import Firebase and call it directly, so "support another
+database" meant rewriting the data layer. It no longer does. The store states
+what it needs; a backend supplies it.
+
+### The port
+
+`lib/data/port.js`. Six methods, and every backend implements all six.
+
+| Call | Meaning |
+| --- | --- |
+| `connect()` | open the connection |
+| `read(scope, path)` | one value, or `null` for ABSENT |
+| `readPage(scope, col, after, limit)` | direct children of a collection, key-ordered, `after` exclusive |
+| `write(scope, path, value)` | replace; `null` deletes the path **and everything under it** |
+| `commit(scope, patch)` | `{ path: value\|null }` in one round trip — every save goes through this |
+| `watch(scope, col, handlers)` | live children; `added` REPLAYS what is already there, then continues |
+
+`scope` is `{ ws: '<uid>' }` for the account's private workspace or
+`{ ws: null }` for the shared area (`pub/`, `inbox/`, `shared/`).
+
+Three rules are contract, not convention, and each one was learned by losing
+data:
+
+1. **`null` is absent; `[]` is empty.** The app reads an absent body as "not
+   fetched yet" and an empty one as "the user deleted the text". A backend that
+   confuses them erases notes.
+2. **A `null` write takes the subtree.** Deleting a page writes
+   `vdata/<pageId>: null` to take its snapshots; deleting a table writes
+   `dbrow/<dbId>: null` to take its rows. A backend that deletes only the exact
+   path leaves them behind, and they reappear the next time the parent is read.
+3. **`watch` replays first.** The sidebar is painted from that replay. A stream
+   that reports only future changes boots the app empty.
+
+### Capabilities
+
+Anything a backend cannot do is DECLARED, not thrown, so the store degrades on
+purpose. Every flag defaults to the least capable value that still works.
+
+| Flag | If false |
+| --- | --- |
+| `realtime` | the store reads the index once at startup instead of streaming; other devices appear on reload |
+| `atomicCommit` | a failed save may be half applied; every write is a replace, so the retry repairs it |
+| `maxCommit` | a patch larger than this is split, and a split commit is not atomic |
+| `paged` | `readPage` may return everything; the store must not rely on it to bound memory |
+| `publicRead` | published links cannot be opened by a stranger, and the app says so rather than failing as a permission error |
+| `legacyLayouts` | there is no pre-v4 workspace to convert; the layout is stamped and four empty reads are skipped |
+
+### The backends
+
+| Name | Where | Notes |
+| --- | --- | --- |
+| `rtdb` | Firebase Realtime Database | the default and the incumbent. Paths stored exactly as written. Billed on bytes downloaded. |
+| `firestore` | Cloud Firestore | billed per document read. Needs `lib/firestore.rules`. |
+| `rest` | your own API | six routes, documented in `lib/data/backend-rest.js`. SSE or polling for live updates. |
+| `local` | this browser | always available; the reference implementation the others are held to. |
+| `routing` | several at once | forwards by kind of data. |
+
+### Firestore, specifically
+
+Two differences from every other backend, both handled in
+`lib/data/backend-firestore.js` and nowhere else:
+
+* **Paths must alternate collection/document.** An odd-length logical path gains
+  one `_` segment before its last: `meta` → `_/meta`, `dbrow/<dbId>/<rowId>` →
+  `dbrow/<dbId>/_/<rowId>`. One rule, applied in both directions, so the
+  collection holding a table's rows is exactly the parent of its row documents.
+* **A document cannot hold an array inside an array**, and a page's blocks are
+  nothing but that — a table block is `rows: [[…],[…]]`, every toggle has
+  `children`. The value is therefore stored as one JSON string field. Firestore
+  bills per document read rather than per byte, so nothing is lost by it. The
+  exception is the three paths a security RULE must look inside (`pub`, `inbox`,
+  `shared`): for those, and only those, the fields the rule needs are copied out
+  beside the JSON.
+
+A document may not exceed 1 MB. A page past that is refused with a message
+naming the page and pointing at the `routing` option, rather than failing as an
+unattributable write error.
+
+**A Firestore workspace starts empty.** Switching does not copy anything across;
+the two databases are separate places. Export from Settings → Data & sync first.
+
+### Using two at once
+
+`backend: 'routing'` with a table of kind → backend. Its purpose is MOVING: a
+change of database is otherwise all-or-nothing, and all-or-nothing on live data
+is how a workspace gets lost.
+
+```js
+backend: 'routing',
+routing: { default: 'rtdb', body: 'rest', vdata: 'rest' }
+```
+
+Three things are true of it and are reported rather than hidden:
+
+* a save becomes one write per backend, so `atomicCommit` is false;
+* `realtime` is true only when EVERY backend in use can stream;
+* nothing is copied when a line changes — data written to the old backend stays
+  there and stops being visible.
+
+### Adding one
+
+Two steps, neither in an existing file: write
+`lib/data/backend-<yours>.js` ending in `AlamzaData.registerBackend(...)`, then
+add its `<script>` to `index.html` and its block to `lib/config.js`.
+`test/f1-port-conformance.test.js` then holds it to the same behaviour as the
+built-in ones. `tuning.strictContract` runs the same check in the browser at
+startup and complains in the console.
+
+### What the user sees
+
+The sidebar badge names the backend that is actually running — "Realtime
+Database · synced", "Firestore · synced", "Your API · synced". Settings → Data &
+sync prints the backend, the SENTENCE explaining why it was chosen, whether live
+updates are on, and whether saves are all-or-nothing. That readout is the
+feedback loop for editing `lib/config.js`.
 
 ## 6. Version control (headline feature)
 
@@ -1604,10 +1730,23 @@ signals "no icon chosen" — it never appears in the page body.
 ```
 index.html              entry point → redirects to index.dc.html
 index.dc.html           the entire application (shell, editor, versions, DB, mobile)
-lib/firebase-config.js  the alamza-notes Firebase web config
+
+lib/config.js           THE config file — which database, and every setting,
+                        each one commented where it is set
+lib/data/port.js        the six-method contract every backend implements
+lib/data/registry.js    register a backend; resolve the config to a live one
+lib/data/firebase-app.js  one shared Firebase app + SDK import
+lib/data/auth.js        sign-in: firebase (Google) · local (demo) · rest (token)
+lib/data/backend-local.js      this browser (localStorage)
+lib/data/backend-rtdb.js       Firebase Realtime Database
+lib/data/backend-firestore.js  Cloud Firestore
+lib/data/backend-rest.js       your own API — six routes, documented in the file
+lib/data/backend-routing.js    several backends at once, split by kind of data
+
 lib/database.rules.json Realtime Database security rules — a workspace is
                         readable and writable only by its own uid
-lib/store.js            data layer — local ⇄ Firebase adapters behind one API
+lib/firestore.rules     the same four statements, for Firestore
+lib/store.js            data layer — caching, diffing, cost, retry, over the port
 lib/markdown.js         inline tokeniser, block→Markdown, Markdown→block
 lib/diff.js             block LCS + word LCS + auto change-summary
 lib/seed.js             demo workspace (pages, versions, roadmap database)
@@ -1642,6 +1781,7 @@ sections above, which are always current.
 
 | Date | Change |
 | --- | --- |
+| 2026-09-05 | **The data layer stopped naming a database, and Firestore was added as a second one.** `lib/store.js` imported Firebase and called it directly, so "support another database" meant rewriting the data layer, and the app could only ever have exactly one. It now depends on a six-method port (`lib/data/port.js`) and a backend supplies it: Realtime Database, Cloud Firestore, your own API, this browser, or several at once split by kind of data. Which one runs is ONE line in `lib/config.js`, a file that exists to be edited and documents every setting where it is set. Everything the store was actually good at stayed in the store — the index/body split, the LRU cache, the null-vs-empty contract, the write diff, the retry and the cost meter — so all of it moved to Firestore for free. Three findings came out of building it. **`auto` preferred the newer backend**, and because the two Firebase blocks describe the same project and differ by one field, merely filling in the Firestore block to try it would have pointed a live account at an empty database and made every note look deleted; the incumbent now wins and the shipped config names `rtdb` outright. **`null` at a parent path must take the subtree**, which the local backend did on `commit` but not on `write`, so leaving a share deleted the marker and left the content — the clause is now in the contract and in the conformance suite. **`renderVals()` branches on what the STORE says, not only on the state**, and the test suite only ever ran one store configuration: a `ReferenceError` on the sign-in screen survived 246 green tests and was caught by opening the app in a browser. The stub is now checked against the real store's surface, and `renderVals` is run over every combination of store flags. Verified: 249 tests including a conformance suite every backend must pass, the real `lib/store.js` driven against localStorage and against Firestore and asserted to produce an identical workspace, Firestore's path mapping and nested-array encoding checked against a fake SDK that refuses nested arrays exactly as the real one does, and the app booted in Chromium on each backend. |
 | 2026-08-23 | **⌃/⌥ + ⌫ or ⌦ did not remove a word, and a delete could trap whitespace against a delimiter.** In a plain block the browser's own word delete worked; in a formatted one our delimiter-aware branch took the key and removed exactly ONE character, so the shortcut looked broken wherever there was formatting — and the ⌥ chord did nothing at all. The browser could not simply be left to it: it takes a `display:none` span away with the character beside it, and it counts delimiters as letters, so it stopped mid-run. A word is now measured on what the reader SEES and performed as that many single steps, so an emptied run drops its delimiters by the rule one keystroke already follows. Sweeping every offset then exposed an older fault in that single step: deleting the character at the edge of a run left `**bold **`, which is not emphasis by CommonMark, so the run broke and its asterisks appeared — a plain ⌫ had this too and no earlier sweep had used a run with a space in it. Whitespace is now moved across the delimiter rather than left inside, keeping the reader's words in the same order; only the delimiter the deletion touched is considered and the swap is kept only if `markMap()` says it hides more, so literal asterisks are never quietly turned into emphasis. `backspaceAt`, `deleteAt` and both word deletes now share one single-step primitive and one collapse rule, so they cannot disagree. Verified: word delete forwards and backwards over plain text, over runs, and emptying a run or a link label; ⌃⌫/⌃⌦ swept at every offset of three formatted lines and single ⌫/⌦ swept over a run containing a space, with no delimiter ever visible; the block-merge edges and the code block's native key intact. |
 | 2026-08-23 | **Two caret faults left over from the audit.** (1) **A markdown shortcut threw the caret to the end of the line.** `tryShortcut` always restored it at `rest.length`, which is right by accident on an empty line and wrong on one that already had text: typing `# ` in front of "Hello world" made the heading but put the caret at column 11, so everything typed next went to the back of the line the reader was standing at the front of. The caret now comes from where the reader actually was, minus the prefix that was removed. (2) **Typing at the visual start of a run came out formatted.** `Home` in `**bold** tail` cannot park a caret before the hidden `**`, so the browser slid it to offset 2 and the next character came back as `**Xbold**`. The relocation already knew the mirror case through `_want`; this edge needs no `_want` at all, because if everything before the insertion is invisible the reader was at column 0 by definition, and nothing sits to the left of column 0 for formatting to be inherited from. Verified: all six shortcuts keep column 0 and what follows is typed at the front; all five run types type plain at the visual start, by `Home` and by arrowing there; and typing inside a bold word still extends it. |
 | 2026-08-23 | **`snake_case_name` came out as `snakecasename`.** An underscore inside a word was read as emphasis, so the middle of an identifier turned italic and both underscores were *hidden* — a reader writing about `file_name.txt` or `do_this_now` watched their own text silently rewritten, and the missing characters were invisible rather than wrong-looking, which is worse. CommonMark forbids intraword `_` for exactly this reason; the scanner now does too, for `_`, `__` and `___` alike, emitting the whole run as ordinary text when a word character sits against either end. Asterisks are deliberately untouched — `a*b*c` is emphasis by that spec and everywhere it is implemented. `openRuns()` learned the same rule, because it had the mirror-image fault: ⏎ in the middle of `snake_case_name` closed a run that was never open and produced `snake_c_` above `_ase_name`, inserting underscores nobody typed. Verified: identifiers read back whole, typed key by key as well as loaded; `_really italic_` beside `my_var` still italicises only the former; `_lead_` and `__strong__` still mark; ⏎ inside an identifier adds nothing; ⌫ removes exactly one character at every offset of one; and `inline()` is still byte-identical on all 31 earlier cases. |
