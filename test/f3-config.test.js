@@ -125,7 +125,7 @@ describe('config — the tuning block', () => {
     assert.eq(t.pushDelayMs, 5000, 'the override was lost');
     assert.eq(t.cacheBudget, 2400000, 'an untouched field lost its default');
     assert.eq(t.mirrorDelayMs, 240);
-    assert.eq(t.strictContract, true);
+    assert.eq(t.strictContract, false, 'the contract probe writes to a real workspace — it is opt-in');
   });
 
   it('a missing tuning block is the same as an empty one', () => {

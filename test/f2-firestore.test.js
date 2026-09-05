@@ -228,3 +228,88 @@ describe('firestore — configuration', () => {
     assert.eq(D.configured('rtdb', { apiKey: 'k', databaseURL: 'u' }), true);
   });
 });
+
+describe('firestore — the 1 MB guard counts bytes, not characters', () => {
+  /* Firestore measures a document in UTF-8 BYTES. JavaScript measures a string
+     in UTF-16 units. For English the two are nearly the same and the bug is
+     invisible; for Urdu, Arabic, Hindi or emoji a character costs 2-4 bytes and
+     one unit, so the guard under-counted by up to 3x — a page well over the
+     limit sailed past the friendly error and was rejected by Firestore with a
+     raw one that named nothing the writer could act on. */
+  const URDU = 'یہ ایک صفحہ ہے۔ ';
+  const bytesOf = (s) => Buffer.byteLength(s, 'utf8');
+
+  it('an Urdu page over the limit is refused, and refused by name', async () => {
+    const { b, ws } = fs2();
+    await b.connect();
+    const text = URDU.repeat(40000);
+    const payload = { b: [{ id: 'x', type: 'p', text: text }] };
+    assert.ok(bytesOf(JSON.stringify(payload)) > 1048576,
+      'the fixture must actually be over 1 MB in real bytes');
+
+    let threw = null;
+    try { await b.write(ws, 'body/urdu-page', payload); } catch (e) { threw = e; }
+    assert.ok(threw, 'an over-limit Urdu page was accepted');
+    assert.includes(threw.message, 'body/urdu-page');
+  });
+
+  it('an English page of the same character count is still accepted', async () => {
+    /* the guard must not become so cautious that it refuses ordinary pages */
+    const { b, ws } = fs2();
+    await b.connect();
+    const text = 'a'.repeat(600000);
+    assert.ok(bytesOf(text) < 1000000, 'the fixture must be under the limit in bytes');
+    await b.write(ws, 'body/english-page', { b: [{ id: 'x', text: text }] });
+    assert.ok(await b.read(ws, 'body/english-page'), 'a page under the limit must be stored');
+  });
+
+  it('the message says how big it really is, in the unit Firestore uses', async () => {
+    const { b, ws } = fs2();
+    await b.connect();
+    let threw = null;
+    try { await b.write(ws, 'body/big', { b: [{ text: URDU.repeat(45000) }] }); } catch (e) { threw = e; }
+    assert.ok(threw);
+    assert.includes(threw.message, 'KB');
+    const claimed = Number((threw.message.match(/is (\d+) KB/) || [])[1]);
+    const real = Math.round(bytesOf(JSON.stringify({ b: [{ text: URDU.repeat(45000) }] })) / 1024);
+    assert.ok(Math.abs(claimed - real) <= 2,
+      'the size it reports (' + claimed + ' KB) must be the size Firestore sees (' + real + ' KB)');
+  });
+});
+
+describe('firestore — what deleting costs', () => {
+  it('a page delete does not query collections that can never exist', async () => {
+    const { fake, b, ws } = fs2();
+    await b.connect();
+    await b.commit(ws, { 'idx/p1': { t: 'A' }, 'body/p1': { b: [] }, 'dig/p1': 'a', 'vdata/p1/v1': [{ id: 'x' }] });
+    const before = fake.counts().reads;
+
+    /* what lib/store.js writes when one page is deleted */
+    await b.commit(ws, { 'idx/p1': null, 'body/p1': null, 'dig/p1': null, 'vmeta/p1': null, 'vdata/p1': null });
+
+    /* only vdata/ holds anything under a page. Querying the other four costs a
+       billed read each AND a network round trip each, and deleting a hundred
+       pages made that four hundred round trips in a row. */
+    const spent = fake.counts().reads - before;
+    assert.ok(spent <= 1, 'deleting one page cost ' + spent + ' collection queries; only vdata/p1 can have children');
+  });
+
+  it('but the subtree really is gone', async () => {
+    const { fake, b, ws } = fs2();
+    await b.connect();
+    await b.commit(ws, { 'vdata/p1/v1': [{ id: 'a' }], 'vdata/p1/v2': [{ id: 'b' }],
+                         'dbrow/d1/r1': { id: 'r1' }, 'dbrow/d1/r2': { id: 'r2' } });
+    await b.commit(ws, { 'vdata/p1': null, 'dbrow/d1': null });
+    assert.deep(fake.paths(), [], 'snapshot bodies or table rows outlived their parent');
+  });
+
+  it('a kind the backend has never heard of is still swept, not assumed empty', async () => {
+    /* the safe default: anything not known to be a leaf is walked. A backend
+       that guessed wrong here would leave orphans behind for ever. */
+    const { fake, b, ws } = fs2();
+    await b.connect();
+    await b.commit(ws, { 'somethingnew/a/x': { v: 1 }, 'somethingnew/a/y': { v: 2 } });
+    await b.write(ws, 'somethingnew/a', null);
+    assert.deep(fake.paths(), [], 'an unknown kind was assumed to be a leaf');
+  });
+});

@@ -175,3 +175,34 @@ describe('routing — the edges', () => {
       'wrapping one backend in a router adds a layer and changes nothing');
   });
 });
+
+describe('routing — a misrouted kind is reported once, not once per write', () => {
+  it('the warning is said once and then the decision is remembered', async () => {
+    const { D, sandbox } = makeDataContext({
+      backend: 'routing', backends: { a: {} }, routing: { default: 'a', body: 'firestore' }
+    });
+    twoStores(D);
+    const warned = [];
+    sandbox.console.warn = (m) => warned.push(String(m));
+    const r = D.createBackend('routing', D.config());
+    await r.connect();
+    for (let i = 0; i < 20; i++) await r.write({ ws: 'u1' }, 'body/p' + i, { b: [] });
+    await r.read({ ws: 'u1' }, 'body/p1');
+    const aboutBody = warned.filter(w => w.indexOf('firestore') >= 0);
+    assert.eq(aboutBody.length, 1,
+      'the fallback was re-decided on every call, so the console filled with the same line ' +
+      aboutBody.length + ' times');
+  });
+
+  it('and the data still goes somewhere it can be read back from', async () => {
+    const { D, sandbox } = makeDataContext({
+      backend: 'routing', backends: { a: {} }, routing: { default: 'a', body: 'firestore' }
+    });
+    twoStores(D);
+    sandbox.console.warn = () => {};
+    const r = D.createBackend('routing', D.config());
+    await r.connect();
+    await r.write({ ws: 'u1' }, 'body/p1', { b: [{ text: 'kept' }] });
+    assert.deep(await r.read({ ws: 'u1' }, 'body/p1'), { b: [{ text: 'kept' }] });
+  });
+});

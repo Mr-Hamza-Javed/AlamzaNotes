@@ -26,7 +26,10 @@ function newContext(consoleOver) {
     setTimeout, clearTimeout, setInterval, clearInterval,
     Promise, JSON, Math, Date, Object, Array, String, Number, Boolean,
     RegExp, Error, Map, Set, isNaN, parseInt, parseFloat, encodeURIComponent,
-    decodeURIComponent, Intl, TextEncoder, TextDecoder
+    decodeURIComponent, Intl, TextEncoder, TextDecoder,
+    /* browser globals the data layer uses: a request deadline needs these, and
+       a sandbox without them tests a code path no browser takes */
+    AbortController, EventSource: undefined, URL, URLSearchParams
   };
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
@@ -63,10 +66,11 @@ function newContext(consoleOver) {
    what reached storage — which is where most of the version bugs lived. */
 function makeStore(over) {
   const s = {
-    /* `mode` is the compatibility alias; `cloud` is what it means. Both are set
-       so a test sees what the app sees. */
-    mode: 'firebase',
+    /* `cloud` is the fact; `mode` is derived from it exactly as the real store
+       derives it. A stub that let a test set the two apart would let a test
+       pass against a state the app can never be in. */
     cloud: true,
+    get mode() { return this.cloud ? 'firebase' : 'local'; },
     backendName: 'rtdb',
     authName: 'firebase',
     why: 'lib/config.js selected "rtdb"',
@@ -187,7 +191,7 @@ function makeStore(over) {
        them are reachable — see 'the stub cannot drift from the real store'. */
     signInWithGoogle() { s.log('signInWithGoogle', []); return Promise.resolve(s.user); },
     signOut() { s.log('signOut', []); s.user = null; return Promise.resolve(); },
-    enterDemo() { s.log('enterDemo', []); s.demo = true; s.mode = 'local'; s.cloud = false; return Promise.resolve(s.user); },
+    enterDemo() { s.log('enterDemo', []); s.demo = true; s.cloud = false; return Promise.resolve(s.user); },
     leaveDemo() { s.log('leaveDemo', []); s.demo = false; },
     retryMigration() { s.log('retryMigration', []); return Promise.resolve('ok'); },
     loadPublic(slug, password) {
@@ -322,6 +326,12 @@ function loadRealStore(opts) {
   sandbox.requestIdleCallback = null;
 
   if (opts && opts.config) Object.assign(sandbox.ALAMZA_CONFIG, opts.config);
+  /* A hook to register a backend and an auth provider BEFORE lib/store.js is
+     evaluated, because the store resolves its config at module load. It is what
+     lets a test drive the real init/subscribe path — the auth callback, the
+     layout check, the listeners — instead of only the pieces reachable
+     afterwards. */
+  if (opts && opts.register) opts.register(sandbox.AlamzaData, sandbox);
 
   let src = fs.readFileSync(path.join(ROOT, 'lib/store.js'), 'utf8');
   if (src.indexOf(STORE_ANCHOR) < 0) throw new Error('harness: store.js anchor moved — update STORE_ANCHOR');
@@ -355,7 +365,12 @@ function loadRealStore(opts) {
      the SAME store against two different databases and compare — the single
      most useful thing this harness can do now that the store has no database
      in it. */
-  inner.setBackend(opts && opts.backend ? opts.backend(sandbox.AlamzaData) : fb);
+  /* A test that registers its own backend drives the REAL init path — the
+     store opens the port itself. Injecting a stub as well would short-circuit
+     openBackend() and leave the auth provider unopened. */
+  if (!(opts && opts.register)) {
+    inner.setBackend(opts && opts.backend ? opts.backend(sandbox.AlamzaData) : fb);
+  }
   inner.setUser({ uid: 'u1', name: 'Tester' });
   Object.assign(store.stats, { down: 0, up: 0, reads: 0, writes: 0 });
   return { store, fb, inner, sandbox, mem: () => mem, D: sandbox.AlamzaData };

@@ -123,7 +123,6 @@ describe('template', () => {
           Object.assign(a.state, patch);
           flags.forEach((f, i) => { a.store[f] = !!(bits & (1 << i)); });
           a.store.backendName = backendName;
-          a.store.mode = a.store.cloud ? 'firebase' : 'local';
           try { a.renderVals(); }
           catch (e) {
             const where = flags.filter((f, i) => bits & (1 << i)).join('+') || 'nothing set';

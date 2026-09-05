@@ -112,6 +112,9 @@ describe('the port — watching', () => {
 
     const seen = [];
     const off = b.watch({ ws: 'u1' }, 'idx', { added: (k) => seen.push('+' + k) });
+    /* the replay is asynchronous on every backend, including this one — see
+       'its watch replays asynchronously' in the hardening suite */
+    await new Promise(r => setTimeout(r, 10));
     assert.deep(seen, ['+a', '+b'], 'the sidebar is painted from this replay');
 
     await b.write({ ws: 'u1' }, 'idx/c', { t: 'C' });
@@ -132,6 +135,7 @@ describe('the port — watching', () => {
       changed: (k) => log.push('chg ' + k),
       removed: (k) => log.push('del ' + k)
     });
+    await new Promise(r => setTimeout(r, 10));      // let the replay land first
     await b.write({ ws: 'u1' }, 'idx/a', { t: 'A2' });
     await b.write({ ws: 'u1' }, 'idx/a', null);
     assert.deep(log, ['add a', 'chg a', 'del a']);
@@ -145,5 +149,110 @@ describe('the port — watching', () => {
     b.watch({ ws: 'mine' }, 'idx', { added: (k) => seen.push(k) });
     await b.write({ ws: 'someone-else' }, 'idx/secret', { t: 'theirs' });
     assert.deep(seen, [], 'a watch leaked across workspaces');
+  });
+});
+
+describe('the port — the contract check must be safe to run on a real database', () => {
+  const fs = require('fs');
+  const path = require('path');
+
+  it('it probes a scope the security rules actually permit', async () => {
+    /* The check used to write to workspaces/conformance-probe, which no rule
+       allows: every real user got a console warning saying their backend "does
+       not keep the contract", which was a lie, plus a denied request on every
+       load. It has to probe the signed-in account's OWN workspace, because that
+       is the only place the app is allowed to write. */
+    const { D } = makeDataContext({});
+    const seen = [];
+    const b = D.defineBackend({
+      name: 'watcher',
+      caps: { realtime: false, atomicCommit: true, paged: true, publicRead: true },
+      connect: () => Promise.resolve(),
+      read: (s, p) => { seen.push([s.ws, p]); return Promise.resolve(null); },
+      readPage: (s, p) => { seen.push([s.ws, p]); return Promise.resolve({}); },
+      write: (s, p) => { seen.push([s.ws, p]); return Promise.resolve(); },
+      commit: (s, patch) => { Object.keys(patch).forEach(p => seen.push([s.ws, p])); return Promise.resolve(); },
+      watch: () => () => {},
+      close: () => Promise.resolve()
+    });
+    await D.conformance(b, { ws: 'the-signed-in-user' });
+    const wrongScope = seen.filter(x => x[0] !== 'the-signed-in-user');
+    assert.deep(wrongScope, [], 'the probe wrote outside the scope it was given');
+  });
+
+  it('it never touches a path the app itself stores anything at', async () => {
+    /* A probe document under idx/ would arrive through the app's own index
+       watch and appear in the sidebar as a phantom page. */
+    const { D } = makeDataContext({});
+    const seen = [];
+    const b = D.defineBackend({
+      name: 'watcher2',
+      caps: { realtime: true, atomicCommit: true, paged: true, publicRead: true },
+      connect: () => Promise.resolve(),
+      read: (s, p) => { seen.push(p); return Promise.resolve(null); },
+      readPage: (s, p) => { seen.push(p); return Promise.resolve({}); },
+      write: (s, p) => { seen.push(p); return Promise.resolve(); },
+      commit: (s, patch) => { Object.keys(patch).forEach(p => seen.push(p)); return Promise.resolve(); },
+      watch: (s, c) => { seen.push(c); return () => {}; },
+      close: () => Promise.resolve()
+    });
+    await D.conformance(b, { ws: 'u1' });
+    const appKinds = Object.keys(D.KINDS).concat(['meta', 'layout']);
+    const collisions = [...new Set(seen)].filter(p => appKinds.indexOf(p.split('/')[0]) >= 0);
+    assert.deep(collisions, [], 'the probe used a path the app stores real data at');
+  });
+
+  it('the shipped config leaves the check off — it is a tool for writing a backend', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib/config.js'), 'utf8');
+    const m = src.match(/strictContract:\s*(true|false)/);
+    assert.ok(m, 'lib/config.js has no strictContract line');
+    assert.eq(m[1], 'false', 'a probe that writes to a real workspace must not be on by default');
+  });
+});
+
+describe('the port — what a limit of 0 means', () => {
+  it('every backend reads 0 as "no limit", not as "no rows"', async () => {
+    /* lib/store.js calls readPage(..., 0) whenever it wants everything — the
+       inbox, and the whole index on a backend that cannot stream. The port
+       never said what 0 meant, so it was a sentinel waiting to be taken
+       literally by the next backend somebody writes. */
+    const { D } = makeDataContext({});
+    const b = D.createBackend('local', {});
+    await b.connect();
+    await b.commit({ ws: 'u1' }, { 'idx/a': { t: 'A' }, 'idx/b': { t: 'B' }, 'idx/c': { t: 'C' } });
+    assert.eq(Object.keys(await b.readPage({ ws: 'u1' }, 'idx', null, 0)).length, 3, '0 must mean everything');
+    assert.eq(Object.keys(await b.readPage({ ws: 'u1' }, 'idx', null)).length, 3, 'omitted must mean everything');
+    assert.eq(Object.keys(await b.readPage({ ws: 'u1' }, 'idx', null, 2)).length, 2, 'a real limit must still apply');
+  });
+
+  it('the port says so where readPage is defined, not somewhere else', () => {
+    const src = require('fs').readFileSync(
+      require('path').join(__dirname, '..', 'lib/data/port.js'), 'utf8');
+    /* `maxCommit` also documents a 0, so the check has to look inside the
+       readPage paragraph rather than anywhere in the file */
+    const from = src.indexOf('readPage(scope, col,');
+    const to = src.indexOf('write(scope, path, v)');
+    assert.ok(from > 0 && to > from, 'could not find the readPage contract');
+    const para = src.slice(from, to);
+    assert.ok(/\b0\b/.test(para) && /no limit|everything|unlimited/i.test(para),
+      'readPage does not say what a limit of 0 means');
+  });
+
+  it('the REST backend never puts limit=0 in a URL', async () => {
+    /* a server that honours `limit` literally would return nothing, so the
+       inbox would always be empty and nobody would know why */
+    const ctx = makeDataContext({ backends: { rest: { baseUrl: 'https://api.test' } } });
+    const urls = [];
+    ctx.sandbox.fetch = (u) => {
+      urls.push(u);
+      return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve('{"items":{}}') });
+    };
+    const b = ctx.D.createBackend('rest', { baseUrl: 'https://api.test' });
+    await b.connect();
+    await b.readPage({ ws: 'u1' }, 'idx', null, 0);
+    await b.readPage({ ws: null }, 'inbox/a,b@x,com', null, 0);
+    await b.readPage({ ws: 'u1' }, 'idx', null, 20);
+    assert.deep(urls.filter(u => /limit=0/.test(u)), [], 'limit=0 reached the server');
+    assert.ok(/limit=20/.test(urls[2]), 'a real limit must still be sent');
   });
 });

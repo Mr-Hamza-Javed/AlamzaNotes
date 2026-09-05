@@ -823,6 +823,17 @@ data:
 3. **`watch` replays first.** The sidebar is painted from that replay. A stream
    that reports only future changes boots the app empty.
 
+### One live connection per collection
+
+The port's `watch` takes `added`, `changed` and `removed` together, and the
+store calls it ONCE per collection. It used to call it once per handler, because
+the Realtime Database's own API is shaped that way and there it is free — only
+`onChildAdded` replays what is already stored. Every other backend pays: a
+Firestore `onSnapshot` on a collection delivers the whole collection as `added`
+to *each* listener, and each of those documents is billed. Three listeners on
+the index meant three times the boot cost, on the one node this entire layout
+exists to keep small.
+
 ### Capabilities
 
 Anything a backend cannot do is DECLARED, not thrown, so the store degrades on
@@ -864,12 +875,65 @@ Two differences from every other backend, both handled in
   `shared`): for those, and only those, the fields the rule needs are copied out
   beside the JSON.
 
-A document may not exceed 1 MB. A page past that is refused with a message
-naming the page and pointing at the `routing` option, rather than failing as an
-unattributable write error.
+A document may not exceed 1 MB **of UTF-8 bytes**, which is not what
+`String.length` measures. For English the two are nearly the same and the
+difference never shows; for Urdu, Arabic, Hindi or emoji a character is two to
+four bytes and one unit, so a guard counting units under-reported by up to three
+times and let a page well over the limit through to fail as an unattributable
+write error. It is measured in bytes, with a margin for the field names and the
+document path that Firestore also counts, and a page past it is refused with a
+message naming the page and pointing at the `routing` option.
+
+Deleting a document does not delete the collections under it, so a delete has to
+go looking — and looking costs a billed read and a network round trip even where
+nothing has ever been. Only paths that CAN nest are swept: `dbrow/<dbId>`,
+`vdata/<pageId>`, `inbox/<key>`, and anything of an unknown kind. The list names
+the leaves rather than the nesters, so a kind added later is swept by default:
+being slow is recoverable, leaving orphans behind is not. The sweeps a single
+commit needs run in parallel.
 
 **A Firestore workspace starts empty.** Switching does not copy anything across;
 the two databases are separate places. Export from Settings → Data & sync first.
+
+### The security rules
+
+`lib/firestore.rules` enforces the same four statements as
+`lib/database.rules.json`. Two things about it are worth stating because both
+were wrong once:
+
+* **`delete` is on its own line, never grouped with `update`.** On a delete
+  Firestore gives no `request.resource` — there is no new document — so a
+  condition reading it can never be satisfied. Grouped, "Unpublish" and "remove
+  this person's access" became buttons that reported success and changed
+  nothing: the page stayed world-readable and the guest kept reading.
+* **`hasOnly` is the twin of the Realtime Database's `"$other": false`.**
+  Without it, anyone who may send an invitation may also store anything else
+  they like in someone else's inbox. It names the fields the backend actually
+  writes — the JSON payload plus the two or three copied out for the rule to
+  read — and a test compares the two lists, because they live in different files
+  and different languages and nothing else would keep them together.
+
+Inside `workspaces/<uid>` there is no field validation, and the Realtime
+Database rules do have a little. It cannot be mirrored — the payload is one JSON
+string there, so `u` is not a field a rule can see — and it buys nothing: that
+subtree is reachable by exactly one account.
+
+### What a value is
+
+**Nothing about a value is a backend's business.** It is a sealed envelope, and
+the only requirement is that what comes out is what went in — same fields, same
+nesting, same types. The localStorage backend's entire implementation of storing
+a page is `localStorage.setItem(key, JSON.stringify(value))`; it cannot tell a
+page from a table row.
+
+The one exception is forced: a Firestore security rule cannot parse JSON, so for
+the three paths a rule must look inside, the fields it needs are copied out
+beside the payload. That is one short table in one file.
+
+The shapes themselves are documented at the top of `lib/data/port.js` — as
+reference for the one case where you WOULD want to look inside, such as mapping
+this onto a normalised SQL schema, and not as something a backend must
+implement.
 
 ### Using two at once
 
@@ -895,8 +959,16 @@ Two steps, neither in an existing file: write
 `lib/data/backend-<yours>.js` ending in `AlamzaData.registerBackend(...)`, then
 add its `<script>` to `index.html` and its block to `lib/config.js`.
 `test/f1-port-conformance.test.js` then holds it to the same behaviour as the
-built-in ones. `tuning.strictContract` runs the same check in the browser at
-startup and complains in the console.
+built-in ones.
+
+`tuning.strictContract` runs the same check in the browser, and it is **off in
+the shipped config**: it writes probe documents, so it belongs to the hour you
+spend writing a backend and not to every load thereafter. When it is on it runs
+after sign-in, under the signed-in account's OWN workspace — the only place the
+app may write — and under `probe/`, a kind the app never stores, reads or
+watches. It used to invent `workspaces/conformance-probe`, which no rule
+permits, so on a real database it failed every time and told every user their
+backend was broken.
 
 ### What the user sees
 
@@ -1781,6 +1853,7 @@ sections above, which are always current.
 
 | Date | Change |
 | --- | --- |
+| 2026-09-05 | **An audit of the new storage layer, and sixteen fixes.** Every finding was confirmed by a probe before it was believed and by a failing test before it was fixed. The four that would have bitten in production: **Firestore's rules denied every delete**, because `delete` was grouped with `update` and a delete has no `request.resource` — so "Unpublish" and "remove this person's access" were buttons that reported success while the page stayed world-readable and the guest kept reading, the worst shape a failure can take. **The contract probe wrote to a workspace no rule permits**, so with the shipped default every real user was told on every load that their backend was broken, which was a lie; it now runs after sign-in, in the account's own workspace, under a path the app never uses, and is off by default because it belongs to the hour spent writing a backend. **The REST backend sent `limit=0` when the store meant "everything"**, which a correct server reads as "nothing" — an inbox that is always empty with no error anywhere; the port never said what 0 meant, so it now does. **The 1 MB Firestore guard counted UTF-16 units, not UTF-8 bytes**, so a 1094 KB Urdu page walked past the friendly error to fail as an unattributable write error; it counts bytes. On cost: the store opened **three listeners per collection** because the Realtime Database's API is shaped that way, and on Firestore each one replays the whole collection and is billed — a 200-page boot cost 600 index reads instead of 200; the port always took the three handlers together, and now the store passes them together. Deleting one page issued **five collection queries where only one subtree can exist**, and they ran one after another; leaves are named, unknown kinds are still swept, and the sweeps run in parallel. Nine weak areas closed with them: `openBackend()` is single-flight (two entry points could have opened two auth observers — the multiplier this store was rebuilt to remove); every boot read is metered; the localStorage backend replays asynchronously like every real one, so nothing can depend on timing only the demo has; the REST backend has a request deadline and re-opens its event stream when the token refreshes; sign-in can carry a credential; a document id equal to Firestore's filler segment is no longer invisible; the routing fallback is decided once instead of warning on every call; a composite backend asks for the whole config instead of the router being privileged by name; and `AStore.mode` is derived from `AStore.cloud` rather than being a second copy kept in step by hand. Verified: 288 tests, including a static check that no Firestore rule granting `delete` reads `request.resource` and a test comparing the rules' field lists against what the backend writes; and the app booted in Chromium on each backend. |
 | 2026-09-05 | **The data layer stopped naming a database, and Firestore was added as a second one.** `lib/store.js` imported Firebase and called it directly, so "support another database" meant rewriting the data layer, and the app could only ever have exactly one. It now depends on a six-method port (`lib/data/port.js`) and a backend supplies it: Realtime Database, Cloud Firestore, your own API, this browser, or several at once split by kind of data. Which one runs is ONE line in `lib/config.js`, a file that exists to be edited and documents every setting where it is set. Everything the store was actually good at stayed in the store — the index/body split, the LRU cache, the null-vs-empty contract, the write diff, the retry and the cost meter — so all of it moved to Firestore for free. Three findings came out of building it. **`auto` preferred the newer backend**, and because the two Firebase blocks describe the same project and differ by one field, merely filling in the Firestore block to try it would have pointed a live account at an empty database and made every note look deleted; the incumbent now wins and the shipped config names `rtdb` outright. **`null` at a parent path must take the subtree**, which the local backend did on `commit` but not on `write`, so leaving a share deleted the marker and left the content — the clause is now in the contract and in the conformance suite. **`renderVals()` branches on what the STORE says, not only on the state**, and the test suite only ever ran one store configuration: a `ReferenceError` on the sign-in screen survived 246 green tests and was caught by opening the app in a browser. The stub is now checked against the real store's surface, and `renderVals` is run over every combination of store flags. Verified: 249 tests including a conformance suite every backend must pass, the real `lib/store.js` driven against localStorage and against Firestore and asserted to produce an identical workspace, Firestore's path mapping and nested-array encoding checked against a fake SDK that refuses nested arrays exactly as the real one does, and the app booted in Chromium on each backend. |
 | 2026-08-23 | **⌃/⌥ + ⌫ or ⌦ did not remove a word, and a delete could trap whitespace against a delimiter.** In a plain block the browser's own word delete worked; in a formatted one our delimiter-aware branch took the key and removed exactly ONE character, so the shortcut looked broken wherever there was formatting — and the ⌥ chord did nothing at all. The browser could not simply be left to it: it takes a `display:none` span away with the character beside it, and it counts delimiters as letters, so it stopped mid-run. A word is now measured on what the reader SEES and performed as that many single steps, so an emptied run drops its delimiters by the rule one keystroke already follows. Sweeping every offset then exposed an older fault in that single step: deleting the character at the edge of a run left `**bold **`, which is not emphasis by CommonMark, so the run broke and its asterisks appeared — a plain ⌫ had this too and no earlier sweep had used a run with a space in it. Whitespace is now moved across the delimiter rather than left inside, keeping the reader's words in the same order; only the delimiter the deletion touched is considered and the swap is kept only if `markMap()` says it hides more, so literal asterisks are never quietly turned into emphasis. `backspaceAt`, `deleteAt` and both word deletes now share one single-step primitive and one collapse rule, so they cannot disagree. Verified: word delete forwards and backwards over plain text, over runs, and emptying a run or a link label; ⌃⌫/⌃⌦ swept at every offset of three formatted lines and single ⌫/⌦ swept over a run containing a space, with no delimiter ever visible; the block-merge edges and the code block's native key intact. |
 | 2026-08-23 | **Two caret faults left over from the audit.** (1) **A markdown shortcut threw the caret to the end of the line.** `tryShortcut` always restored it at `rest.length`, which is right by accident on an empty line and wrong on one that already had text: typing `# ` in front of "Hello world" made the heading but put the caret at column 11, so everything typed next went to the back of the line the reader was standing at the front of. The caret now comes from where the reader actually was, minus the prefix that was removed. (2) **Typing at the visual start of a run came out formatted.** `Home` in `**bold** tail` cannot park a caret before the hidden `**`, so the browser slid it to offset 2 and the next character came back as `**Xbold**`. The relocation already knew the mirror case through `_want`; this edge needs no `_want` at all, because if everything before the insertion is invisible the reader was at column 0 by definition, and nothing sits to the left of column 0 for formatting to be inherited from. Verified: all six shortcuts keep column 0 and what follows is typed at the front; all five run types type plain at the visual start, by `Home` and by arrowing there; and typing inside a bold word still extends it. |

@@ -61,6 +61,13 @@ service cloud.firestore {
     match /workspaces/{uid}/{document=**} {
       allow read, write: if signedIn() && request.auth.uid == uid;
     }
+    /* No field validation here, and the Realtime Database rules do have a
+       little (`idx/$pageId` must carry `u`). It cannot be mirrored: this
+       backend stores the payload as one JSON string, so `u` is not a field a
+       rule can see. It buys almost nothing anyway — this subtree is reachable
+       by exactly one account, its own owner, so the only thing validation
+       could protect them from is themselves. The nodes below are the ones
+       OTHER people can reach, and those are validated field by field. */
 
     /* ---- 2. a page published to the web ----------------------------------
        World readable, which is the entire point of a public link. A password
@@ -73,9 +80,21 @@ service cloud.firestore {
        someone else's uid on the way past. */
     match /pub/{slug} {
       allow read: if true;
-      allow create: if signedIn() && request.resource.data.o == request.auth.uid;
-      allow update, delete: if signedIn() && resource.data.o == request.auth.uid
-                            && request.resource.data.o == request.auth.uid;
+
+      /* DELETE IS ON ITS OWN LINE, and that is not tidiness.
+         On a delete Firestore gives no `request.resource` — there is no new
+         document — so any condition that reads it can never be satisfied.
+         Grouped with update, as it was, "Unpublish" became a button that
+         reported success and left the page world-readable for good. */
+      allow delete: if signedIn() && resource.data.o == request.auth.uid;
+
+      allow create: if signedIn()
+                    && request.resource.data.o == request.auth.uid
+                    && request.resource.data.keys().hasOnly(['_j', 'o'])
+                    && request.resource.data.keys().hasAll(['_j', 'o']);
+      allow update: if signedIn() && resource.data.o == request.auth.uid
+                    && request.resource.data.o == request.auth.uid
+                    && request.resource.data.keys().hasOnly(['_j', 'o']);
     }
 
     /* ---- 3. an invitation ------------------------------------------------
@@ -87,15 +106,24 @@ service cloud.firestore {
        currently honour. A share that grants more than the app enforces is a
        promise the code does not keep, so the rule refuses to store one. */
     match /inbox/{emailKeyPath}/_/{inviteId} {
-      allow read, delete: if emailKeyPath == emailKey()
-                          || (signedIn() && resource.data.from == request.auth.uid);
+      /* one match covers reading one invitation and listing the inbox: a list
+         query is allowed only when every document it could return is */
+      allow read: if emailKeyPath == emailKey()
+                  || (signedIn() && resource.data.from == request.auth.uid);
+      allow delete: if emailKeyPath == emailKey()
+                    || (signedIn() && resource.data.from == request.auth.uid);
+
+      /* `hasOnly` is the Firestore twin of the Realtime Database's
+         `"$other": { ".validate": false }`. Without it, anyone who may send an
+         invitation may also store anything else they like in someone else's
+         inbox — the app writes exactly these three fields and nothing more.
+         (`_j` is the payload; `from` and `role` are copied out beside it so a
+         rule can read them, since a rule cannot parse JSON.) */
       allow create, update: if signedIn()
                             && request.resource.data.from == request.auth.uid
-                            && request.resource.data.role == 'viewer';
-    }
-    /* the collection itself is listed when the inbox is opened */
-    match /inbox/{emailKeyPath}/_/{inviteId=**} {
-      allow read: if emailKeyPath == emailKey();
+                            && request.resource.data.role == 'viewer'
+                            && request.resource.data.keys().hasOnly(['_j', 'from', 'role'])
+                            && request.resource.data.keys().hasAll(['_j', 'from', 'role']);
     }
 
     /* ---- 4. a page lent to one other account ------------------------------
@@ -111,9 +139,19 @@ service cloud.firestore {
       allow read: if signedIn()
                   && (resource.data.o == request.auth.uid
                       || resource.data.get('m', {}).get(emailKey(), false) == true);
-      allow create: if signedIn() && request.resource.data.o == request.auth.uid;
-      allow update, delete: if signedIn() && resource.data.o == request.auth.uid
-                            && request.resource.data.o == request.auth.uid;
+
+      /* on its own line for the same reason as pub/ above — grouped with
+         update, removing someone's access reported success and left them
+         reading the page */
+      allow delete: if signedIn() && resource.data.o == request.auth.uid;
+
+      allow create: if signedIn()
+                    && request.resource.data.o == request.auth.uid
+                    && request.resource.data.keys().hasOnly(['_j', 'o', 'm'])
+                    && request.resource.data.keys().hasAll(['_j', 'o']);
+      allow update: if signedIn() && resource.data.o == request.auth.uid
+                    && request.resource.data.o == request.auth.uid
+                    && request.resource.data.keys().hasOnly(['_j', 'o', 'm']);
     }
 
     /* Anything not matched above is denied. Firestore's default, stated so

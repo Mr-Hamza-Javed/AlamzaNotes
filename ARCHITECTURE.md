@@ -121,7 +121,15 @@ for real without a network.
 
 `test/template.test.js` is the one that guards `index.html`: it parses the app
 shell and checks that every `{{ binding }}` in the markup is actually produced
-by `renderVals()`, which otherwise fails silently as a blank node.
+by `renderVals()`, which otherwise fails silently as a blank node — and runs
+`renderVals()` over every combination of store flags, because it branches on
+what the STORE says as well as on the state and a crash in one of those
+branches once survived a green run all the way into the browser.
+
+`opts.register` on `loadRealStore()` registers a backend and an auth provider
+BEFORE `lib/store.js` is evaluated, which is what lets a test drive the real
+boot — the auth callback, the layout check, the listeners — rather than only
+the parts reachable afterwards.
 
 ## Data layer
 
@@ -150,6 +158,11 @@ lib/firestore.rules         security rules for Firestore
 The registry resolves that line to a backend, records WHY in `AlamzaData.chose`,
 and Settings → Data & sync prints the answer. `lib/store.js` names no database
 at all; it asks the port to read a path, write a patch, or watch a collection.
+
+`AStore.cloud` is the question the app actually asks — is there a server, or is
+this browser the only copy? `AStore.mode` is the name that question used to
+have; it is now derived from `cloud` and kept only for anything outside this
+repo that still reads it.
 
 ### Adding a database
 
